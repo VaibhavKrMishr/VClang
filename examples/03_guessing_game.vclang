@@ -1,0 +1,24 @@
+// 03_guessing_game.vclang //
+// Showcasing I/O and interactive looping //
+
+println("--- 03 Guessing Game ---");
+println("I'm thinking of a number between 1 and 10.");
+
+int target = 7;
+int guess = 0;
+int attempts = 0;
+
+while (guess != target) {
+    string inputStr = input("Enter your guess: ");
+    guess = int(inputStr);
+    attempts = attempts + 1;
+
+    if (guess < target) {
+        println("Too low!");
+    }
+    if (guess > target) {
+        println("Too high!");
+    }
+}
+
+println("Correct! You guessed it in", attempts, "attempts.");

@@ -1,0 +1,85 @@
+print("=== 1. Basic Arithmetic & Variables ===");
+int x = 10;
+int y = 20;
+int z = x + (y * 2);
+print("x: "); println(x);
+print("y: "); println(y);
+print("z (x + y*2): "); println(z);
+
+println("\n=== 2. Data Types (Float & String) ===");
+float f = 3.14 + 2.0;
+string s1 = "Hello VClang";
+string s2 = 'Single Quote String';
+print("float f: "); println(f);
+print("string s1: "); println(s1);
+print("string s2: "); println(s2);
+
+println("\n=== 3. Control Flow (If/Else & While) ===");
+print("Testing If (z > 40): ");
+if (z > 40) {
+    println("Passed");
+} else {
+    println("Failed");
+}
+
+print("Testing While loop (countdown from 3): ");
+int count = 3;
+while (count > 0) {
+    print(count); print(" ");
+    count = count - 1;
+}
+println("Done");
+
+println("\n=== 4. Phase 1.5 (For, Break, Continue) ===");
+println("Testing For Loop (0-2):");
+for (int i = 0; i < 3; i = i + 1) {
+    print("Iter: "); println(i);
+}
+
+println("Testing Break in While (0-2):");
+int b = 0;
+while (b < 10) {
+    if (b == 3) { break; }
+    println(b);
+    b = b + 1;
+}
+
+println("Testing Continue in For (skipping 2):");
+for (int j = 0; j < 5; j = j + 1) {
+    if (j == 2) { continue; }
+    println(j);
+}
+
+println("\n=== 5. String Escapes ===");
+println("Line 1\nLine 2\tTabbed");
+
+println("\n=== 6. Phase 2 (Conversions & Input) ===");
+println("=== Testing int() ===");
+println(int(10));
+println(int(10.9));
+println(int("123"));
+println(int("A"));
+
+println("=== Testing float() ===");
+println(float(10));
+println(float("3.14"));
+println(float(2.5));
+
+println("=== Testing string() ===");
+println(string(100));
+println(string(3.14159));
+println(string("Already a string"));
+
+println("=== Testing char() ===");
+println(char(65));
+println(char(66));
+println(char(33));
+
+println("=== Conversions in Declarations ===");
+int age = int("22");
+float pi = float("3.14");
+println(age);
+println(pi);
+
+
+println("\n=== All Tests Completed ===");

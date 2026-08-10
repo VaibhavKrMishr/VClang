@@ -1,0 +1,20 @@
+// test_arithmetic.vclang //
+// Unit tests for basic arithmetic and types
+
+int a = 10;
+int b = 3;
+float c = 2.5;
+
+int sum = a + b;
+if (sum != 13) { println("FAIL: int addition"); }
+
+float fsum = a + c;
+if (fsum != 12.5) { println("FAIL: float addition"); }
+
+int mult = a * b;
+if (mult != 30) { println("FAIL: int multiplication"); }
+
+int div = a / b;
+if (div != 3) { println("FAIL: int division"); }
+
+println("Arithmetic Tests Passed.");

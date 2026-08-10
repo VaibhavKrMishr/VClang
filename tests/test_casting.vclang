@@ -1,0 +1,25 @@
+// test_casting.vclang //
+// Unit tests for casting built-ins
+
+int i1 = int(3.9);
+if (i1 != 3) { println("FAIL: int(float)"); }
+
+int i2 = int("42");
+if (i2 != 42) { println("FAIL: int(string)"); }
+
+float f1 = float(10);
+if (f1 != 10.0) { println("FAIL: float(int)"); }
+
+float f2 = float("3.14");
+if (f2 != 3.14) { println("FAIL: float(string)"); }
+
+string s1 = string(100);
+if (s1 != "100") { println("FAIL: string(int)"); }
+
+string c = char(65);
+if (c != "A") { println("FAIL: char(int)"); }
+
+int l = len("hello");
+if (l != 5) { println("FAIL: len(string)"); }
+
+println("Casting Tests Passed.");

@@ -1,0 +1,19 @@
+// 04_dsa_fibonacci.vclang //
+// DSA: Generate Fibonacci sequence up to N terms //
+
+println("--- 04 DSA: Fibonacci Sequence ---");
+
+string inputStr = input("How many terms do you want to generate? ");
+int terms = int(inputStr);
+
+int a = 0;
+int b = 1;
+
+println("Fibonacci Sequence:");
+for (int i = 0; i < terms; i = i + 1) {
+    print(a, " ");
+    int nextTerm = a + b;
+    a = b;
+    b = nextTerm;
+}
+println();

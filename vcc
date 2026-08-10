@@ -1,0 +1,43 @@
+#!/bin/bash
+# vcc - VClang Compiler Driver
+
+input_file=""
+output_file="a.out"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -o|--output)
+      output_file="$2"
+      shift 2
+      ;;
+    *)
+      input_file="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$input_file" ]]; then
+  echo "Usage: vcc <input.cv> [-o output]"
+  exit 1
+fi
+
+# Ideally, a real compiler would emit binary or C code.
+# For now, we create a self-contained executable that wraps the interpreter logic + source.
+# A simple approach: create a shell script wrapper.
+
+# Ensure vclang exists
+INTERPRETER_PATH="$(dirname $(realpath $0))/vclang"
+
+if [[ ! -f "$INTERPRETER_PATH" ]]; then
+    echo "Error: vclang interpreter not found at $INTERPRETER_PATH"
+    exit 1
+fi
+
+cat > "$output_file" <<EOF
+#!/bin/bash
+"$INTERPRETER_PATH" "$PWD/$input_file"
+EOF
+
+chmod +x "$output_file"
+echo "Compiled $input_file to $output_file"

@@ -1,0 +1,39 @@
+// 02_control_flow.vclang //
+// Showcasing if/else, loops, break, and continue //
+
+println("--- 02 Control Flow ---");
+
+// If-Else
+int score = 85;
+print("Score is", score, "- ");
+if (score >= 90) {
+    println("Grade: A");
+} else {
+    if (score >= 80) {
+        println("Grade: B");
+    } else {
+        println("Grade: C");
+    }
+}
+
+// While Loop
+println("Counting down from 5:");
+int count = 5;
+while (count > 0) {
+    print(count, " ");
+    count = count - 1;
+}
+println("Blastoff!");
+
+// For Loop with Break and Continue
+println("For loop (skipping 2, breaking at 5):");
+for (int i = 0; i < 10; i = i + 1) {
+    if (i == 2) {
+        continue;
+    }
+    if (i == 5) {
+        break;
+    }
+    print(i, " ");
+}
+println(); // Just a newline

@@ -1,0 +1,21 @@
+// 06_dsa_gcd.vclang //
+// DSA: Euclidean Algorithm to find Greatest Common Divisor //
+
+println("--- 06 DSA: Greatest Common Divisor (GCD) ---");
+
+int a = int(input("Enter first integer (A): "));
+int b = int(input("Enter second integer (B): "));
+
+int originalA = a;
+int originalB = b;
+
+while (b != 0) {
+    // We emulate modulo: a % b == a - (a/b)*b
+    int quotient = a / b;
+    int remainder = a - (quotient * b);
+    
+    a = b;
+    b = remainder;
+}
+
+println("The GCD of", originalA, "and", originalB, "is", a);

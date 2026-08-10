@@ -1,0 +1,31 @@
+// 01_basics.vclang //
+// Showcasing variables, types, arithmetic, and casting //
+
+println("--- 01 Basics ---");
+
+// Primitives
+int myInt = 42;
+float myFloat = 3.14159;
+string myString = "VClang is awesome!";
+
+println("Integer:", myInt);
+println("Float:", myFloat);
+println("String:", myString);
+
+// Arithmetic and Type Promotion
+float result = myInt + myFloat; // Promotes to float
+println("42 + 3.14159 =", result);
+
+// String Concatenation and Automatic Casting
+string message = "The result is: " + result;
+println(message);
+
+// Explicit Casting
+int castedFloat = int(myFloat);
+println("3.14159 casted to int is:", castedFloat);
+
+string asciiLetter = char(65);
+println("ASCII 65 is:", asciiLetter);
+
+int length = len(myString);
+println("Length of string '", myString, "' is:", length);
