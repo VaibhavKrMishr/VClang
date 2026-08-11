@@ -1,4 +1,4 @@
-# 🚀 VClang
+# 🚀 VClang pre-alpha 
 
 VClang is a lightweight, C-like interpreted programming language designed from the ground up for simplicity, speed, and educational purposes. If you've ever wanted to explore how a programming language evaluates logic, handles variables, and manages control flow under the hood, VClang is the perfect playground.
 

@@ -191,22 +191,6 @@ void val_print(val* v) {
 
 void val_println(val* v) { val_print(v); putchar('\n'); fflush(stdout); }
 
-// --- AST Construction ---
-
-/*
-  The parser will produce an AST.
-  For now, we will reuse VAL_SEXPR as a general "node" in the AST.
-  The first element of the cell can be a VAL_SYM indicating the node type or operator.
-  
-  e.g. 1 + 2 -> ( "+" 1 2 )
-  int x = 10; -> ( "decl" "int" "x" 10 )
-  if (x) { ... } -> ( "if" cond block )
-  while (x) { ... } -> ( "while" cond block )
-  block -> ( "block" st1 st2 ... )
-*/
-
-// val_op removed (unused)
-
 val* val_node(char* op, val* x, val* y) {
     val* v = val_sexpr();
     val_add(v, val_sym(op));
@@ -231,7 +215,6 @@ val* val_read_num(char* s, int* i) {
     return val_num(x);
 }
 
-// Reads a symbol or keyword or identifier
 // Reads a symbol or keyword or identifier
 val* val_read_sym(char* s, int* i) {
     char* part = calloc(1, 1);
