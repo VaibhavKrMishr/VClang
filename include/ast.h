@@ -1,12 +1,10 @@
-#ifndef VCLANG_H
-#define VCLANG_H
+#ifndef VCLANG_AST_H
+#define VCLANG_AST_H
 
+#include "memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-
-// --- Data Types ---
 
 typedef enum {
     VAL_INT,
@@ -28,6 +26,7 @@ typedef struct val* (*lbuiltin)(struct lenv*, struct val*);
 
 typedef struct val {
     val_type type;
+    int line; // Track source code line number
 
     // Basic data
     long num;
@@ -42,19 +41,17 @@ typedef struct val {
     struct val** cell;
 } val;
 
-// --- Function Prototypes ---
-
 // Constructors
 val* val_num(long x);
 val* val_float(double x);
 val* val_str(char* s);
-val* val_err(char* m);
-val* val_sym(char* s);
-val* val_fun(lbuiltin func);
-val* val_sexpr(void);
-val* val_qexpr(void);
 val* val_break(void);
 val* val_continue(void);
+val* val_err(char* m);
+val* val_sym(char* s);
+val* val_sexpr(void);
+val* val_fun(lbuiltin func);
+val* val_qexpr(void);
 
 // Destructor
 void val_del(val* v);
@@ -64,20 +61,11 @@ val* val_add(val* v, val* x);
 val* val_pop(val* v, int i);
 val* val_take(val* v, int i);
 val* val_copy(val* v);
+val* val_node(char *op, val *x, val *y);
 
 // Printing
+void val_expr_print(val *v, char open, char close);
 void val_print(val* v);
 void val_println(val* v);
 
-// Evaluation
-val* val_eval(lenv* e, val* v);
-
-// Environment
-struct lenv;
-lenv* lenv_new(void);
-void lenv_del(lenv* e);
-val* lenv_get(lenv* e, val* k);
-void lenv_put(lenv* e, val* k, val* v);
-void lenv_add_builtin(lenv* e, char* name, lbuiltin func);
-
-#endif
+#endif // VCLANG_AST_H

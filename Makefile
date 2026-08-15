@@ -1,11 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
+CFLAGS = -Wall -Wextra -std=c99 -g -Iinclude
 TARGET = vclang
 
 all: $(TARGET)
 
-$(TARGET): src/vclang.c src/vclang.h
-	$(CC) $(CFLAGS) -o $(TARGET) src/vclang.c
+$(TARGET): src/main.c
+	$(CC) $(CFLAGS) -o $(TARGET) src/main.c
 
 clean:
 	rm -f $(TARGET)

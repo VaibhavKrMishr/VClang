@@ -1,0 +1,19 @@
+// test_logical.vclang //
+// Unit tests for logical operators
+
+int t = 1;
+int f = 0;
+
+if (!(t && f == 0)) { println("FAIL: Logical AND"); }
+if (!(t || f)) { println("FAIL: Logical OR"); }
+if (!(!f)) { println("FAIL: Logical NOT"); }
+
+// Short-circuiting tests
+int side_effect = 0;
+if (f && (side_effect = 1)) { }
+if (side_effect != 0) { println("FAIL: Logical AND Short-circuit"); }
+
+if (t || (side_effect = 1)) { }
+if (side_effect != 0) { println("FAIL: Logical OR Short-circuit"); }
+
+println("Logical Tests Passed.");
