@@ -1,27 +1,24 @@
 #define _POSIX_C_SOURCE 200809L
-#include "memory.c"
-#include "ast.c"
-#include "lexer.c"
-#include "parser.c"
-#include "interpreter.c"
+#include "../include/interpreter.h"
+#include "../include/parser.h"
+#include "../include/opcodes.h"
 #include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-  lenv *e = lenv_new();
+  Env *e = env_new(NULL);
 
   if (argc >= 2) {
+    arena_reset_total_allocated();
     clock_t start = clock();
-    val *args = val_sexpr();
-    val_add(args, val_str(argv[1]));
-    val *x = builtin_load(e, args);
-    // Silent mode: Only print if error
-    if (x->type == VAL_ERR) {
+
+    Value x = builtin_load(e, argv[1]);
+    if (x.type == VAL_ERR) {
       putchar('\n');
       val_println(x);
     }
-    val_del(x);
+    val_clear(&x);
 
     clock_t end = clock();
     double time_spent = (double)(end - start) * 1000.0 / CLOCKS_PER_SEC;
@@ -32,23 +29,58 @@ int main(int argc, char **argv) {
     printf("\n--- Runtime Statistics ---\n");
     printf("Execution Time: %.2f ms\n", time_spent);
     printf("Peak Memory: %ld KB\n", usage.ru_maxrss);
-    printf("Total Allocated: %ld KB\n", vclang_total_mem / 1024);
+    printf("Total Allocated: %zu KB\n", (vclang_total_mem + arena_get_total_allocated()) / 1024);
   } else {
-    puts("VClang Version 0.5");
+    puts("VClang Version 0.7");
     puts("Press Ctrl+C to Exit or type ';' to end expressions.\n");
 
-    char buffer[2048];
+    // X-3 fix: REPL with multi-line input support (brace counting)
+    char line_buf[2048];
+    char buffer[16384];
+    int brace_depth = 0;
+    int buf_len = 0;
+    buffer[0] = '\0';
+
     while (1) {
-      printf("vclang> ");
-      if (!fgets(buffer, 2048, stdin))
+      if (brace_depth > 0)
+        printf("...... ");
+      else
+        printf("vclang> ");
+
+      if (!fgets(line_buf, sizeof(line_buf), stdin))
         break;
-      val *x = val_read(buffer);
-      val *r = val_eval(e, x);
-      val_println(r);
-      val_del(r);
+
+      // Count braces in this line
+      for (int i = 0; line_buf[i]; i++) {
+        if (line_buf[i] == '{') brace_depth++;
+        if (line_buf[i] == '}') brace_depth--;
+      }
+
+      // Append to buffer
+      int line_len = strlen(line_buf);
+      if (buf_len + line_len < (int)sizeof(buffer) - 1) {
+        memcpy(buffer + buf_len, line_buf, line_len);
+        buf_len += line_len;
+        buffer[buf_len] = '\0';
+      }
+
+      // Only evaluate when braces are balanced
+      if (brace_depth <= 0) {
+        brace_depth = 0;
+        Arena *a = arena_new(4096);
+        ASTNode *ast = parse_source(a, buffer);
+        Value r = eval(e, ast);
+        val_println(r);
+        val_clear(&r);
+        arena_free(a);
+
+        // Reset buffer for next input
+        buf_len = 0;
+        buffer[0] = '\0';
+      }
     }
   }
 
-  lenv_del(e);
+  env_del(e);
   return 0;
 }

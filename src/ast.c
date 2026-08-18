@@ -1,251 +1,181 @@
 #include "../include/ast.h"
 
-// --- Constructors ---
+// All constructors allocate from the arena. No individual free needed.
 
-val *val_num(long x) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_INT;
-  v->line = -1;
-  v->num = x;
-  return v;
+ASTNode *ast_int_lit(Arena *a, long val, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type    = AST_INT_LIT;
+  n->line    = line;
+  n->int_val = val;
+  return n;
 }
 
-val *val_float(double x) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_FLOAT;
-  v->line = -1;
-  v->dec = x;
-  return v;
+ASTNode *ast_float_lit(Arena *a, double val, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type      = AST_FLOAT_LIT;
+  n->line      = line;
+  n->float_val = val;
+  return n;
 }
 
-val *val_str(char *s) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_STR;
-  v->line = -1;
-  v->str = malloc(strlen(s) + 1);
-  strcpy(v->str, s);
-  return v;
+ASTNode *ast_string_lit(Arena *a, const char *s, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type    = AST_STRING_LIT;
+  n->line    = line;
+  n->str_val = arena_strdup(a, s);
+  return n;
 }
 
-val *val_break(void) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_BREAK;
-  v->line = -1;
-  return v;
+ASTNode *ast_ident(Arena *a, const char *name, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type    = AST_IDENT;
+  n->line    = line;
+  n->str_val = arena_strdup(a, name);
+  return n;
 }
 
-val *val_continue(void) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_CONTINUE;
-  v->line = -1;
-  return v;
+ASTNode *ast_binary_op(Arena *a, OpType op,
+                       const ASTNode *lhs, const ASTNode *rhs, int line) {
+  ASTNode *n     = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type        = AST_BINARY_OP;
+  n->line        = line;
+  n->binary.op   = op;
+  n->binary.lhs  = lhs;
+  n->binary.rhs  = rhs;
+  return n;
 }
 
-val *val_err(char *m) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_ERR;
-  v->line = -1;
-  v->err = malloc(strlen(m) + 1);
-  strcpy(v->err, m);
-  return v;
+ASTNode *ast_unary_op(Arena *a, OpType op,
+                      const ASTNode *operand, int line) {
+  ASTNode *n       = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type          = AST_UNARY_OP;
+  n->line          = line;
+  n->unary.op      = op;
+  n->unary.operand = operand;
+  return n;
 }
 
-val *val_sym(char *s) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_SYM;
-  v->line = -1;
-  v->sym = malloc(strlen(s) + 1);
-  strcpy(v->sym, s);
-  return v;
-}
-
-val *val_sexpr(void) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_SEXPR;
-  v->line = -1;
-  v->count = 0;
-  v->cell = NULL;
-  return v;
-}
-
-val *val_fun(lbuiltin func) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_FUN;
-  v->line = -1;
-  v->fun = func;
-  return v;
-}
-
-val *val_qexpr(void) {
-  val *v = malloc(sizeof(val));
-  v->type = VAL_QEXPR;
-  v->line = -1;
-  v->count = 0;
-  v->cell = NULL;
-  return v;
-}
-
-// --- Destructor ---
-
-void val_del(val *v) {
-  switch (v->type) {
-  case VAL_INT:
-    break;
-  case VAL_FLOAT:
-    break;
-  case VAL_BREAK:
-    break;
-  case VAL_CONTINUE:
-    break;
-  case VAL_FUN:
-    break;
-  case VAL_ERR:
-    free(v->err);
-    break;
-  case VAL_SYM:
-    free(v->sym);
-    break;
-  case VAL_STR:
-    free(v->str);
-    break;
-  case VAL_QEXPR:
-  case VAL_SEXPR:
-    for (int i = 0; i < v->count; i++) {
-      val_del(v->cell[i]);
-    }
-    free(v->cell);
-    break;
+ASTNode *ast_call(Arena *a, const char *func_name,
+                  const ASTNode **args, int arg_count, int line) {
+  ASTNode *n          = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type             = AST_CALL;
+  n->line             = line;
+  n->call.func_name   = arena_strdup(a, func_name);
+  n->call.arg_count   = arg_count;
+  // Copy the pointer array into the arena
+  if (arg_count > 0) {
+    const ASTNode **arr = (const ASTNode **)arena_alloc(
+        a, sizeof(ASTNode *) * arg_count);
+    memcpy(arr, args, sizeof(ASTNode *) * arg_count);
+    n->call.args = arr;
+  } else {
+    n->call.args = NULL;
   }
-  free(v);
+  return n;
 }
 
-// --- AST Manipulation ---
-
-val *val_add(val *v, val *x) {
-  v->count++;
-  v->cell = realloc(v->cell, sizeof(val *) * v->count);
-  v->cell[v->count - 1] = x;
-  return v;
+ASTNode *ast_decl(Arena *a, const char *name,
+                  const ASTNode *value, int line) {
+  ASTNode *n    = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type       = AST_DECL;
+  n->line       = line;
+  n->decl.name  = arena_strdup(a, name);
+  n->decl.value = value;
+  return n;
 }
 
-val *val_pop(val *v, int i) {
-  val *x = v->cell[i];
-  memmove(&v->cell[i], &v->cell[i + 1], sizeof(val *) * (v->count - i - 1));
-  v->count--;
-  v->cell = realloc(v->cell, sizeof(val *) * v->count);
-  return x;
+ASTNode *ast_assign(Arena *a, const char *name,
+                    const ASTNode *value, int line) {
+  ASTNode *n    = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type       = AST_ASSIGN;
+  n->line       = line;
+  n->decl.name  = arena_strdup(a, name);
+  n->decl.value = value;
+  return n;
 }
 
-val *val_take(val *v, int i) {
-  val *x = val_pop(v, i);
-  val_del(v);
-  return x;
+ASTNode *ast_if(Arena *a, const ASTNode *cond,
+                const ASTNode *then_body, const ASTNode *else_body,
+                int line) {
+  ASTNode *n            = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type               = AST_IF;
+  n->line               = line;
+  n->if_stmt.cond       = cond;
+  n->if_stmt.then_body  = then_body;
+  n->if_stmt.else_body  = else_body;
+  return n;
 }
 
-val *val_copy(val *v) {
-  val *x = malloc(sizeof(val));
-  x->type = v->type;
-  x->line = v->line;
+ASTNode *ast_while(Arena *a, const ASTNode *cond,
+                   const ASTNode *body, int line) {
+  ASTNode *n           = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type              = AST_WHILE;
+  n->line              = line;
+  n->while_stmt.cond   = cond;
+  n->while_stmt.body   = body;
+  return n;
+}
 
-  switch (v->type) {
-  case VAL_INT:
-    x->num = v->num;
-    break;
-  case VAL_FLOAT:
-    x->dec = v->dec;
-    break;
-  case VAL_BREAK:
-    break;
-  case VAL_CONTINUE:
-    break;
-  case VAL_FUN:
-    x->fun = v->fun;
-    break;
-  case VAL_ERR:
-    x->err = malloc(strlen(v->err) + 1);
-    strcpy(x->err, v->err);
-    break;
-  case VAL_STR:
-    x->str = malloc(strlen(v->str) + 1);
-    strcpy(x->str, v->str);
-    break;
-  case VAL_SYM:
-    x->sym = malloc(strlen(v->sym) + 1);
-    strcpy(x->sym, v->sym);
-    break;
-  case VAL_SEXPR:
-  case VAL_QEXPR:
-    x->count = v->count;
-    x->cell = malloc(sizeof(val *) * x->count);
-    for (int i = 0; i < x->count; i++) {
-      x->cell[i] = val_copy(v->cell[i]);
-    }
-    break;
+ASTNode *ast_for_body(Arena *a, const ASTNode *body,
+                      const ASTNode *step, int line) {
+  ASTNode *n        = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type           = AST_FOR_BODY;
+  n->line           = line;
+  n->for_body.body  = body;
+  n->for_body.step  = step;
+  return n;
+}
+
+ASTNode *ast_block(Arena *a, const ASTNode **stmts, int count, int line) {
+  ASTNode *n          = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type             = AST_BLOCK;
+  n->line             = line;
+  n->block.stmt_count = count;
+  if (count > 0) {
+    const ASTNode **arr = (const ASTNode **)arena_alloc(
+        a, sizeof(ASTNode *) * count);
+    memcpy(arr, stmts, sizeof(ASTNode *) * count);
+    n->block.stmts = arr;
+  } else {
+    n->block.stmts = NULL;
   }
-  return x;
+  return n;
 }
 
-// --- Printing ---
-
-void val_expr_print(val *v, char open, char close) {
-  putchar(open);
-  for (int i = 0; i < v->count; i++) {
-    val_print(v->cell[i]);
-    if (i != (v->count - 1)) {
-      putchar(' ');
-    }
+ASTNode *ast_program(Arena *a, const ASTNode **stmts, int count) {
+  ASTNode *n          = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type             = AST_PROGRAM;
+  n->line             = 0;
+  n->block.stmt_count = count;
+  if (count > 0) {
+    const ASTNode **arr = (const ASTNode **)arena_alloc(
+        a, sizeof(ASTNode *) * count);
+    memcpy(arr, stmts, sizeof(ASTNode *) * count);
+    n->block.stmts = arr;
+  } else {
+    n->block.stmts = NULL;
   }
-  putchar(close);
+  return n;
 }
 
-void val_print(val *v) {
-  switch (v->type) {
-  case VAL_INT:
-    printf("%li", v->num);
-    break;
-  case VAL_FLOAT:
-    printf("%lf", v->dec);
-    break;
-  case VAL_BREAK:
-    printf("break");
-    break;
-  case VAL_CONTINUE:
-    printf("continue");
-    break;
-  case VAL_STR:
-    printf("%s", v->str);
-    break;
-  case VAL_ERR:
-    if (v->line > 0)
-      printf("Error (Line %d): %s", v->line, v->err);
-    else
-      printf("Error: %s", v->err);
-    break;
-  case VAL_SYM:
-    printf("%s", v->sym);
-    break;
-  case VAL_FUN:
-    printf("<function>");
-    break;
-  case VAL_SEXPR:
-    val_expr_print(v, '(', ')');
-    break;
-  case VAL_QEXPR:
-    val_expr_print(v, '{', '}');
-    break;
-  }
+ASTNode *ast_return(Arena *a, const ASTNode *expr, int line) {
+  ASTNode *n   = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type      = AST_RETURN;
+  n->line      = line;
+  n->ret.expr  = expr;
+  return n;
 }
 
-void val_println(val *v) {
-  val_print(v);
-  putchar('\n');
-  fflush(stdout);
+ASTNode *ast_break(Arena *a, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type    = AST_BREAK;
+  n->line    = line;
+  return n;
 }
 
-val *val_node(char *op, val *x, val *y) {
-  val *v = val_sexpr();
-  val_add(v, val_sym(op));
-  val_add(v, x);
-  val_add(v, y);
-  return v;
+ASTNode *ast_continue(Arena *a, int line) {
+  ASTNode *n = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type    = AST_CONTINUE;
+  n->line    = line;
+  return n;
 }

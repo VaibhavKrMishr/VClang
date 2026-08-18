@@ -1,0 +1,6 @@
+int x=45;
+for (i=0;i<3;i=i+1){
+    int x=i;
+    print(x+" ");
+}
+println(x);

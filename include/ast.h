@@ -2,70 +2,92 @@
 #define VCLANG_AST_H
 
 #include "memory.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "opcodes.h"
 
 typedef enum {
-    VAL_INT,
-    VAL_FLOAT,
-    VAL_STR,
-    VAL_SYM,
-    VAL_SEXPR,
-    VAL_QEXPR,
-    VAL_FUN,
-    VAL_ERR,
-    VAL_BREAK,
-    VAL_CONTINUE
-} val_type;
+    AST_INT_LIT,
+    AST_FLOAT_LIT,
+    AST_STRING_LIT,
+    AST_IDENT,
+    AST_BINARY_OP,
+    AST_UNARY_OP,
+    AST_CALL,
+    AST_DECL,
+    AST_ASSIGN,
+    AST_IF,
+    AST_WHILE,
+    AST_FOR_BODY,
+    AST_BLOCK,
+    AST_PROGRAM,
+    AST_RETURN,
+    AST_BREAK,
+    AST_CONTINUE
+} ASTNodeType;
 
-struct val;
-struct lenv;
-typedef struct lenv lenv;
-typedef struct val* (*lbuiltin)(struct lenv*, struct val*);
+typedef struct ASTNode ASTNode;
 
-typedef struct val {
-    val_type type;
-    int line; // Track source code line number
+struct ASTNode {
+    ASTNodeType type;
+    int line;
 
-    // Basic data
-    long num;
-    double dec;
-    char* str;
-    char* err;
-    char* sym;
-    lbuiltin fun;
+    union {
+        long int_val;                   // AST_INT_LIT
+        double float_val;               // AST_FLOAT_LIT
+        const char *str_val;            // AST_STRING_LIT, AST_IDENT
 
-    // List of sub-expressions
-    int count;
-    struct val** cell;
-} val;
+        struct { OpType op; const ASTNode *lhs; const ASTNode *rhs; } binary;
+        struct { OpType op; const ASTNode *operand; } unary;
 
-// Constructors
-val* val_num(long x);
-val* val_float(double x);
-val* val_str(char* s);
-val* val_break(void);
-val* val_continue(void);
-val* val_err(char* m);
-val* val_sym(char* s);
-val* val_sexpr(void);
-val* val_fun(lbuiltin func);
-val* val_qexpr(void);
+        struct {
+            const char *func_name;
+            const ASTNode **args;
+            int arg_count;
+        } call;
 
-// Destructor
-void val_del(val* v);
+        struct { const char *name; const ASTNode *value; } decl; // AST_DECL, AST_ASSIGN
 
-// AST manipulation
-val* val_add(val* v, val* x);
-val* val_pop(val* v, int i);
-val* val_take(val* v, int i);
-val* val_copy(val* v);
-val* val_node(char *op, val *x, val *y);
+        struct {
+            const ASTNode *cond;
+            const ASTNode *then_body;
+            const ASTNode *else_body;
+        } if_stmt;
 
-// Printing
-void val_expr_print(val *v, char open, char close);
-void val_print(val* v);
-void val_println(val* v);
+        struct { const ASTNode *cond; const ASTNode *body; } while_stmt;
+        struct { const ASTNode *body; const ASTNode *step; } for_body;
+
+        struct {
+            const ASTNode **stmts;
+            int stmt_count;
+        } block;                        // AST_BLOCK, AST_PROGRAM
+
+        struct { const ASTNode *expr; } ret;
+    };
+};
+
+ASTNode *ast_int_lit(Arena *a, long val, int line);
+ASTNode *ast_float_lit(Arena *a, double val, int line);
+ASTNode *ast_string_lit(Arena *a, const char *s, int line);
+ASTNode *ast_ident(Arena *a, const char *name, int line);
+ASTNode *ast_binary_op(Arena *a, OpType op,
+                       const ASTNode *lhs, const ASTNode *rhs, int line);
+ASTNode *ast_unary_op(Arena *a, OpType op,
+                      const ASTNode *operand, int line);
+ASTNode *ast_call(Arena *a, const char *func_name,
+                  const ASTNode **args, int arg_count, int line);
+ASTNode *ast_decl(Arena *a, const char *name,
+                  const ASTNode *value, int line);
+ASTNode *ast_assign(Arena *a, const char *name,
+                    const ASTNode *value, int line);
+ASTNode *ast_if(Arena *a, const ASTNode *cond,
+                const ASTNode *then_body, const ASTNode *else_body, int line);
+ASTNode *ast_while(Arena *a, const ASTNode *cond,
+                   const ASTNode *body, int line);
+ASTNode *ast_for_body(Arena *a, const ASTNode *body,
+                      const ASTNode *step, int line);
+ASTNode *ast_block(Arena *a, const ASTNode **stmts, int count, int line);
+ASTNode *ast_program(Arena *a, const ASTNode **stmts, int count);
+ASTNode *ast_return(Arena *a, const ASTNode *expr, int line);
+ASTNode *ast_break(Arena *a, int line);
+ASTNode *ast_continue(Arena *a, int line);
 
 #endif // VCLANG_AST_H

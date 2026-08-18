@@ -1,14 +1,34 @@
 #ifndef VCLANG_LEXER_H
 #define VCLANG_LEXER_H
 
-#include "ast.h"
-#include <ctype.h>
-#include <string.h>
+#include "memory.h"
 
-val* val_read_num(char *s, int *i);
-val* val_read_sym(char *s, int *i);
-val* val_read_str(char *s, int *i, char delim);
-val* val_read_op(char *s, int *i);
-val* val_tokenize(char *s);
+typedef enum {
+    TOK_INT,
+    TOK_FLOAT,
+    TOK_STRING,
+    TOK_IDENT,
+    TOK_OP,
+    TOK_EOF
+} TokenType;
+
+typedef struct {
+    TokenType type;
+    int       line;
+    union {
+        long   ival;
+        double fval;
+        char  *sval;    // TOK_STRING, TOK_IDENT, TOK_OP (heap-allocated)
+    };
+} Token;
+
+typedef struct {
+    Token *tokens;
+    int    count;
+    int    cap;
+} TokenList;
+
+TokenList tokenize(const char *source);
+void      tokenlist_free(TokenList *tl);
 
 #endif // VCLANG_LEXER_H

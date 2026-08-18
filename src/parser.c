@@ -1,103 +1,166 @@
 #include "../include/parser.h"
-#include "../include/lexer.h"
+#include "../include/opcodes.h"
+#include <string.h>
 
-// --- Recursive Descent Parser ---
+// ============================================================
+// Parser state
+// ============================================================
 
-// Helper to look ahead
-char *peek(val *tokens, int i) {
-  if (i >= tokens->count)
-    return "";
-  if (tokens->cell[i]->type != VAL_SYM)
-    return "";
-  return tokens->cell[i]->sym;
+typedef struct {
+  Arena          *arena;
+  const TokenList *tl;
+  int              pos;
+} Parser;
+
+// ============================================================
+// Helpers
+// ============================================================
+
+static const Token *peek(Parser *p) {
+  if (p->pos >= p->tl->count) return &p->tl->tokens[p->tl->count]; // EOF
+  return &p->tl->tokens[p->pos];
 }
 
-// Helper to consume expected token
-int expect(val *tokens, int *i, char *sym) {
-  if (*i >= tokens->count)
-    return 0;
-  if (tokens->cell[*i]->type == VAL_SYM &&
-      strcmp(tokens->cell[*i]->sym, sym) == 0) {
-    (*i)++;
-    return 1;
-  }
+static const Token *advance(Parser *p) {
+  const Token *t = peek(p);
+  if (t->type != TOK_EOF) p->pos++;
+  return t;
+}
+
+static int check_op(Parser *p, const char *op) {
+  const Token *t = peek(p);
+  return (t->type == TOK_OP && strcmp(t->sval, op) == 0);
+}
+
+static int check_ident(Parser *p, const char *kw) {
+  const Token *t = peek(p);
+  return (t->type == TOK_IDENT && strcmp(t->sval, kw) == 0);
+}
+
+static int match_op(Parser *p, const char *op) {
+  if (check_op(p, op)) { advance(p); return 1; }
   return 0;
 }
 
-// Factors: number, (expr), unary ops
-val *val_parse_factor(val *tokens, int *i) {
-  if (*i >= tokens->count)
-    return val_err("Unexpected end of input");
+static int match_ident(Parser *p, const char *kw) {
+  if (check_ident(p, kw)) { advance(p); return 1; }
+  return 0;
+}
 
-  val *t = tokens->cell[*i];
+// Forward declarations
+static ASTNode *parse_expr(Parser *p);
+static ASTNode *parse_statement(Parser *p);
+static ASTNode *parse_block(Parser *p);
+
+// P-2 fix: error reporting instead of silent dummy nodes
+static void parse_error(Parser *p, const char *msg) {
+  const Token *t = peek(p);
+  fprintf(stderr, "VClang: syntax error at line %d: %s", t->line, msg);
+  if (t->type == TOK_OP || t->type == TOK_IDENT)
+    fprintf(stderr, " (got '%s')", t->sval);
+  else if (t->type == TOK_EOF)
+    fprintf(stderr, " (at end of input)");
+  fprintf(stderr, "\n");
+}
+
+// P-3 fix: expect a specific operator, report error if missing
+static int expect_op(Parser *p, const char *op) {
+  if (check_op(p, op)) { advance(p); return 1; }
+  fprintf(stderr, "VClang: syntax error at line %d: expected '%s'\n",
+          peek(p)->line, op);
+  return 0;
+}
+
+// ============================================================
+// Expression parsing (recursive descent, precedence climbing)
+// ============================================================
+
+static ASTNode *parse_factor(Parser *p) {
+  const Token *t = peek(p);
 
   // Unary NOT
-  if (t->type == VAL_SYM && strcmp(t->sym, "!") == 0) {
-    (*i)++;
-    val *op = val_sym("!");
-    val *rhs = val_parse_factor(tokens, i);
-    return val_node(op->sym, val_sexpr(), rhs); // We'll just evaluate ! rhs
+  if (t->type == TOK_OP && strcmp(t->sval, "!") == 0) {
+    advance(p);
+    ASTNode *operand = parse_factor(p);
+    return ast_unary_op(p->arena, OP_NOT, operand, t->line);
   }
 
-  // Number or String
-  if (t->type == VAL_INT || t->type == VAL_FLOAT || t->type == VAL_STR) {
-    (*i)++;
-    return val_copy(t);
+  // Integer literal
+  if (t->type == TOK_INT) {
+    advance(p);
+    return ast_int_lit(p->arena, t->ival, t->line);
   }
 
-  // Parentheses
-  if (expect(tokens, i, "(")) {
-    val *e = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ")")) {
-      val_del(e);
-      return val_err("Expected ')'");
-    }
+  // Float literal
+  if (t->type == TOK_FLOAT) {
+    advance(p);
+    return ast_float_lit(p->arena, t->fval, t->line);
+  }
+
+  // String literal
+  if (t->type == TOK_STRING) {
+    advance(p);
+    return ast_string_lit(p->arena, t->sval, t->line);
+  }
+
+  // Parenthesized expression
+  if (match_op(p, "(")) {
+    ASTNode *e = parse_expr(p);
+    expect_op(p, ")"); // P-3: report missing paren
     return e;
   }
 
-  // Variable / Identifier (treated as symbol lookup) or Function Call
-  if (t->type == VAL_SYM) {
-    (*i)++;
-    // Check for Function Call: SYMBOL ( args )
-    if (expect(tokens, i, "(")) {
-      val *call = val_sexpr();
-      val_add(call, val_sym("call"));
-      val_add(call, val_copy(t)); // Function name
+  // Identifier or function call
+  if (t->type == TOK_IDENT) {
+    advance(p);
+    // Function call?
+    if (match_op(p, "(")) {
+      // Collect arguments using a temporary stack buffer
+      int arg_cap = 8;
+      int arg_count = 0;
+      const ASTNode **args = (const ASTNode **)malloc(
+          sizeof(ASTNode *) * arg_cap);
 
-      val *args = val_sexpr();
-      while (*i < tokens->count && !expect(tokens, i, ")")) {
-        val_add(args, val_parse_expr(tokens, i));
-
-        // If we hit a ')', we are done with arguments
-        if (expect(tokens, i, ")"))
-          break;
-
-        // Otherwise, we must have a comma separating the next argument
-        if (!expect(tokens, i, ",")) {
-          val_del(call);
-          val_del(args);
-          return val_err("Expected ',' or ')' after argument");
+      if (!check_op(p, ")")) {
+        args[arg_count++] = parse_expr(p);
+        while (match_op(p, ",")) {
+          if (arg_count >= arg_cap) {
+            arg_cap *= 2;
+            args = (const ASTNode **)realloc(
+                args, sizeof(ASTNode *) * arg_cap);
+          }
+          args[arg_count++] = parse_expr(p);
         }
       }
-      val_add(call, args);
-      return call;
+      expect_op(p, ")"); // P-3: report missing paren
+
+      ASTNode *node = ast_call(p->arena, t->sval, args, arg_count, t->line);
+      free(args); // Temporary — the arena copy is inside ast_call
+      return node;
     }
-    return val_copy(t);
+    // Plain identifier
+    return ast_ident(p->arena, t->sval, t->line);
   }
 
-  return val_err("Unexpected token in factor");
+  // P-2 fix: report the error instead of silently producing a dummy node
+  parse_error(p, "unexpected token");
+  advance(p);
+  // Return a dummy int 0 to avoid NULL propagation
+  return ast_int_lit(p->arena, 0, t->line);
 }
 
-// Term: * / %
-val *val_parse_term(val *tokens, int *i) {
-  val *lhs = val_parse_factor(tokens, i);
-
+static ASTNode *parse_term(Parser *p) {
+  ASTNode *lhs = parse_factor(p);
   while (1) {
-    char *op = peek(tokens, *i);
-    if (strcmp(op, "*") == 0 || strcmp(op, "/") == 0 || strcmp(op, "%") == 0) {
-      (*i)++;
-      val *rhs = val_parse_factor(tokens, i);
-      lhs = val_node(op, lhs, rhs);
+    const Token *t = peek(p);
+    if (t->type == TOK_OP &&
+        (strcmp(t->sval, "*") == 0 || strcmp(t->sval, "/") == 0 ||
+         strcmp(t->sval, "%") == 0)) {
+      OpType op = op_from_string(t->sval);
+      int line = t->line;
+      advance(p);
+      ASTNode *rhs = parse_factor(p);
+      lhs = ast_binary_op(p->arena, op, lhs, rhs, line);
     } else {
       break;
     }
@@ -105,16 +168,17 @@ val *val_parse_term(val *tokens, int *i) {
   return lhs;
 }
 
-// Additive: + -
-val *val_parse_add(val *tokens, int *i) {
-  val *lhs = val_parse_term(tokens, i);
-
+static ASTNode *parse_add(Parser *p) {
+  ASTNode *lhs = parse_term(p);
   while (1) {
-    char *op = peek(tokens, *i);
-    if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0) {
-      (*i)++;
-      val *rhs = val_parse_term(tokens, i);
-      lhs = val_node(op, lhs, rhs);
+    const Token *t = peek(p);
+    if (t->type == TOK_OP &&
+        (strcmp(t->sval, "+") == 0 || strcmp(t->sval, "-") == 0)) {
+      OpType op = op_from_string(t->sval);
+      int line = t->line;
+      advance(p);
+      ASTNode *rhs = parse_term(p);
+      lhs = ast_binary_op(p->arena, op, lhs, rhs, line);
     } else {
       break;
     }
@@ -122,25 +186,22 @@ val *val_parse_add(val *tokens, int *i) {
   return lhs;
 }
 
-// Comparison: < > <= >= == !=
-val *val_parse_cmp(val *tokens, int *i) {
-  val *lhs = val_parse_add(tokens, i);
-
+static ASTNode *parse_cmp(Parser *p) {
+  ASTNode *lhs = parse_add(p);
   while (1) {
-    char *op = peek(tokens, *i);
-    if (strchr("=<!>", op[0])) { // Simple check, careful with '=' vs '=='
-      if (strcmp(op, "=") == 0)
-        break; // Assignment is handled elsewhere if not assignment is distinct
-      // Treat =, !=, == etc.
-      if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 ||
-          strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
-          strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0) {
-        (*i)++;
-        val *rhs = val_parse_add(tokens, i);
-        lhs = val_node(op, lhs, rhs);
-      } else {
-        break;
-      }
+    const Token *t = peek(p);
+    if (t->type != TOK_OP) break;
+    const char *ops = t->sval;
+    // Don't match bare '=' (that's assignment)
+    if (strcmp(ops, "=") == 0) break;
+    if (strcmp(ops, "==") == 0 || strcmp(ops, "!=") == 0 ||
+        strcmp(ops, "<") == 0  || strcmp(ops, ">") == 0  ||
+        strcmp(ops, "<=") == 0 || strcmp(ops, ">=") == 0) {
+      OpType op = op_from_string(ops);
+      int line = t->line;
+      advance(p);
+      ASTNode *rhs = parse_add(p);
+      lhs = ast_binary_op(p->arena, op, lhs, rhs, line);
     } else {
       break;
     }
@@ -148,15 +209,17 @@ val *val_parse_cmp(val *tokens, int *i) {
   return lhs;
 }
 
-val *val_parse_logical(val *tokens, int *i) {
-  val *lhs = val_parse_cmp(tokens, i);
-
+static ASTNode *parse_logical(Parser *p) {
+  ASTNode *lhs = parse_cmp(p);
   while (1) {
-    char *op = peek(tokens, *i);
-    if (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0) {
-      (*i)++;
-      val *rhs = val_parse_cmp(tokens, i);
-      lhs = val_node(op, lhs, rhs);
+    const Token *t = peek(p);
+    if (t->type == TOK_OP &&
+        (strcmp(t->sval, "&&") == 0 || strcmp(t->sval, "||") == 0)) {
+      OpType op = op_from_string(t->sval);
+      int line = t->line;
+      advance(p);
+      ASTNode *rhs = parse_cmp(p);
+      lhs = ast_binary_op(p->arena, op, lhs, rhs, line);
     } else {
       break;
     }
@@ -164,245 +227,189 @@ val *val_parse_logical(val *tokens, int *i) {
   return lhs;
 }
 
-val *val_parse_expr(val *tokens, int *i) {
-  return val_parse_logical(tokens, i);
+static ASTNode *parse_expr(Parser *p) {
+  return parse_logical(p);
 }
 
-// Block: { stmts }
-val *val_parse_block(val *tokens, int *i) {
-  if (!expect(tokens, i, "{"))
-    return val_err("Expected '{'");
+// ============================================================
+// Block: { stmts... }
+// ============================================================
 
-  val *block = val_sexpr();
-  val_add(block, val_sym("block"));
-
-  while (*i < tokens->count && !expect(tokens, i, "}")) {
-    val_add(block, val_parse_statement(tokens, i));
+static ASTNode *parse_block(Parser *p) {
+  int line = peek(p)->line;
+  if (!match_op(p, "{")) {
+    // P-3 fix: report missing opening brace
+    fprintf(stderr, "VClang: syntax error at line %d: expected '{'\n", peek(p)->line);
   }
-  return block;
+
+  int stmt_cap = 8;
+  int stmt_count = 0;
+  const ASTNode **stmts = (const ASTNode **)malloc(
+      sizeof(ASTNode *) * stmt_cap);
+
+  while (!check_op(p, "}") && peek(p)->type != TOK_EOF) {
+    if (stmt_count >= stmt_cap) {
+      stmt_cap *= 2;
+      stmts = (const ASTNode **)realloc(stmts, sizeof(ASTNode *) * stmt_cap);
+    }
+    stmts[stmt_count++] = parse_statement(p);
+  }
+  expect_op(p, "}"); // P-3: report missing closing brace
+
+  ASTNode *node = ast_block(p->arena, stmts, stmt_count, line);
+  free(stmts);
+  return node;
 }
 
+// ============================================================
 // Statements
-val *val_parse_statement(val *tokens, int *i) {
-  if (*i >= tokens->count)
-    return val_err("Unexpected end of input");
+// ============================================================
 
-  char *t = peek(tokens, *i);
+static ASTNode *parse_statement(Parser *p) {
+  const Token *t = peek(p);
 
   // Block
-  if (strcmp(t, "{") == 0) {
-    return val_parse_block(tokens, i);
+  if (check_op(p, "{")) {
+    return parse_block(p);
   }
 
-  // Variable Declaration: int/float/string x = 10;
-  if (strcmp(t, "int") == 0 || strcmp(t, "float") == 0 ||
-      strcmp(t, "string") == 0) {
-    (*i)++;
-    val *name = val_copy(tokens->cell[*i]);
-    (*i)++; // Expect identifier name
-    if (!expect(tokens, i, "=")) {
-      val_del(name);
-      return val_err("Expected '=' in declaration");
-    }
-    val *v_val = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ";")) {
-      val_del(name);
-      val_del(v_val);
-      return val_err("Expected ';'");
-    }
-
-    val *decl = val_sexpr();
-    val_add(decl, val_sym("decl"));
-    val_add(decl, name);
-    val_add(decl, v_val);
-    return decl;
+  // Variable declaration: int/float/string name = expr;
+  if (check_ident(p, "int") || check_ident(p, "float") ||
+      check_ident(p, "string")) {
+    advance(p); // skip type keyword
+    const Token *name_tok = advance(p); // identifier name
+    match_op(p, "=");
+    ASTNode *val = parse_expr(p);
+    match_op(p, ";");
+    return ast_decl(p->arena, name_tok->sval, val, t->line);
   }
 
-  // If Statement: if (cond) stmt else stmt
-  if (strcmp(t, "if") == 0) {
-    (*i)++;
-    if (!expect(tokens, i, "("))
-      return val_err("Expected '(' after if");
-    val *cond = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ")")) {
-      val_del(cond);
-      return val_err("Expected ')'");
+  // If statement
+  if (match_ident(p, "if")) {
+    match_op(p, "(");
+    ASTNode *cond = parse_expr(p);
+    match_op(p, ")");
+    ASTNode *then_body = parse_statement(p);
+    ASTNode *else_body = NULL;
+    if (check_ident(p, "else")) {
+      advance(p);
+      else_body = parse_statement(p);
     }
-    val *then_body = val_parse_statement(tokens, i);
-
-    val *node = val_sexpr();
-    val_add(node, val_sym("if"));
-    val_add(node, cond);
-    val_add(node, then_body);
-
-    if (strcmp(peek(tokens, *i), "else") == 0) {
-      (*i)++;
-      val *else_body = val_parse_statement(tokens, i);
-      val_add(node, else_body);
-    } else {
-      val_add(node, val_sexpr()); // Empty else
-    }
-    return node;
+    return ast_if(p->arena, cond, then_body, else_body, t->line);
   }
 
-  // While Loop: while (cond) stmt;
-  if (strcmp(t, "while") == 0) {
-    (*i)++;
-    if (!expect(tokens, i, "("))
-      return val_err("Expected '(' after while");
-    val *cond = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ")")) {
-      val_del(cond);
-      return val_err("Expected ')'");
-    }
-    val *body = val_parse_statement(tokens, i);
-
-    val *node = val_sexpr();
-    val_add(node, val_sym("while"));
-    val_add(node, cond);
-    val_add(node, body);
-    return node;
+  // While loop
+  if (match_ident(p, "while")) {
+    match_op(p, "(");
+    ASTNode *cond = parse_expr(p);
+    match_op(p, ")");
+    ASTNode *body = parse_statement(p);
+    return ast_while(p->arena, cond, body, t->line);
   }
 
-  // For Loop: for (init; cond; step) body -> (block init (while cond (block
-  // body step)))
-  if (strcmp(t, "for") == 0) {
-    (*i)++;
-    if (!expect(tokens, i, "("))
-      return val_err("Expected '(' after for");
+  // For loop: for (init; cond; step) body
+  if (match_ident(p, "for")) {
+    match_op(p, "(");
 
-    // Init (statement or decl)
-    val *init = val_parse_statement(tokens, i);
-    // Note: val_parse_statement consumes the semicolon usually
+    // Init statement
+    ASTNode *init = parse_statement(p);
 
     // Condition
-    val *cond = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ";")) {
-      val_del(init);
-      val_del(cond);
-      return val_err("Expected ';' after loop condition");
-    }
+    ASTNode *cond = parse_expr(p);
+    match_op(p, ";");
 
-    // Step (expression usually, but we need it as a statement to run it)
-    // We parse carefully. Usually i=i+1 is an assignment, which is a statement
-    // if followed by ; But inside 'for', the step does NOT have a trailing ; So
-    // we need to parse it as an expression or assignment-expression
-
-    val *step;
-    // Check for assignment: IDENT = ...
-    if (tokens->cell[*i]->type == VAL_SYM && (*i + 1 < tokens->count) &&
-        tokens->cell[*i + 1]->type == VAL_SYM &&
-        strcmp(tokens->cell[*i + 1]->sym, "=") == 0) {
-      val *name = val_copy(tokens->cell[*i]);
-      (*i) += 2;
-      val *v_val = val_parse_expr(tokens, i);
-      step = val_sexpr();
-      val_add(step, val_sym("assign"));
-      val_add(step, name);
-      val_add(step, v_val);
+    // Step — check for assignment: IDENT = ...
+    ASTNode *step;
+    const Token *t1 = peek(p);
+    const Token *t2 = (p->pos + 1 < p->tl->count)
+                          ? &p->tl->tokens[p->pos + 1]
+                          : t1;
+    if (t1->type == TOK_IDENT && t2->type == TOK_OP &&
+        strcmp(t2->sval, "=") == 0) {
+      const Token *name_tok = advance(p);
+      advance(p); // skip '='
+      ASTNode *val = parse_expr(p);
+      step = ast_assign(p->arena, name_tok->sval, val, t1->line);
     } else {
-      step = val_parse_expr(tokens, i);
+      step = parse_expr(p);
     }
+    match_op(p, ")");
 
-    if (!expect(tokens, i, ")"))
-      return val_err("Expected ')' after for loop");
+    ASTNode *body = parse_statement(p); // P-6 fix: consistent with while/if
 
-    val *body = val_parse_block(tokens, i);
+    // Construct: block(init, while(cond, for_body(body, step)))
+    ASTNode *fb = ast_for_body(p->arena, body, step, t->line);
+    ASTNode *wh = ast_while(p->arena, cond, fb, t->line);
 
-    // Construct: (block init (while cond (for_body body step)))
-    val *fbody = val_sexpr();
-    val_add(fbody, val_sym("for_body"));
-    val_add(fbody, body);
-    val_add(fbody, step);
-
-    val *while_node = val_sexpr();
-    val_add(while_node, val_sym("while"));
-    val_add(while_node, cond);
-    val_add(while_node, fbody);
-
-    val *outer = val_sexpr();
-    val_add(outer, val_sym("block"));
-    val_add(outer, init);
-    val_add(outer, while_node);
-
-    return outer;
+    const ASTNode *outer_stmts[2] = { init, wh };
+    return ast_block(p->arena, outer_stmts, 2, t->line);
   }
 
-  // Return Statement
-  if (strcmp(t, "return") == 0) {
-    (*i)++;
-    val *expr = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ";")) {
-      val_del(expr);
-      return val_err("Expected ';'");
+  // Return
+  if (match_ident(p, "return")) {
+    ASTNode *expr = parse_expr(p);
+    match_op(p, ";");
+    return ast_return(p->arena, expr, t->line);
+  }
+
+  // Break
+  if (match_ident(p, "break")) {
+    match_op(p, ";");
+    return ast_break(p->arena, t->line);
+  }
+
+  // Continue
+  if (match_ident(p, "continue")) {
+    match_op(p, ";");
+    return ast_continue(p->arena, t->line);
+  }
+
+  // Assignment: ident = expr;
+  if (t->type == TOK_IDENT && p->pos + 1 < p->tl->count) {
+    const Token *next = &p->tl->tokens[p->pos + 1];
+    if (next->type == TOK_OP && strcmp(next->sval, "=") == 0) {
+      const Token *name_tok = advance(p);
+      advance(p); // skip '='
+      ASTNode *val = parse_expr(p);
+      match_op(p, ";");
+      return ast_assign(p->arena, name_tok->sval, val, t->line);
     }
-    val *node = val_sexpr();
-    val_add(node, val_sym("return"));
-    val_add(node, expr);
-    return node;
   }
 
-  // Break Statement
-  if (strcmp(t, "break") == 0) {
-    (*i)++;
-    if (!expect(tokens, i, ";"))
-      return val_err("Expected ';'");
-    return val_break();
-  }
-
-  // Continue Statement
-  if (strcmp(t, "continue") == 0) {
-    (*i)++;
-    if (!expect(tokens, i, ";"))
-      return val_err("Expected ';'");
-    return val_continue();
-  }
-
-  // Expression Statement or Assignment
-  // Try to parse expression
-  // Check for assignment: x = 10;
-  // Hacky lookahead for assignment: IDENT = ...
-  if (tokens->cell[*i]->type == VAL_SYM && (*i + 1 < tokens->count) &&
-      tokens->cell[*i + 1]->type == VAL_SYM &&
-      strcmp(tokens->cell[*i + 1]->sym, "=") == 0) {
-    val *name = val_copy(tokens->cell[*i]);
-    (*i) += 2; // Skip name and =
-    val *v_val = val_parse_expr(tokens, i);
-    if (!expect(tokens, i, ";")) {
-      val_del(name);
-      val_del(v_val);
-      return val_err("Expected ';'");
-    }
-
-    val *node = val_sexpr();
-    val_add(node, val_sym("assign"));
-    val_add(node, name);
-    val_add(node, v_val);
-    return node;
-  }
-
-  val *expr = val_parse_expr(tokens, i);
-  if (!expect(tokens, i, ";")) {
-    val_del(expr);
-    return val_err("Expected ';'");
-  }
+  // Expression statement
+  ASTNode *expr = parse_expr(p);
+  match_op(p, ";");
   return expr;
 }
 
-val *val_parse(val *tokens) {
-  int i = 0;
-  val *ast = val_sexpr();
-  val_add(ast, val_sym("program"));
+// ============================================================
+// Public API
+// ============================================================
 
-  while (i < tokens->count) {
-    val_add(ast, val_parse_statement(tokens, &i));
+ASTNode *parse(Arena *a, const TokenList *tl) {
+  Parser p = { .arena = a, .tl = tl, .pos = 0 };
+
+  int stmt_cap = 16;
+  int stmt_count = 0;
+  const ASTNode **stmts = (const ASTNode **)malloc(
+      sizeof(ASTNode *) * stmt_cap);
+
+  while (peek(&p)->type != TOK_EOF) {
+    if (stmt_count >= stmt_cap) {
+      stmt_cap *= 2;
+      stmts = (const ASTNode **)realloc(stmts, sizeof(ASTNode *) * stmt_cap);
+    }
+    stmts[stmt_count++] = parse_statement(&p);
   }
-  return ast;
+
+  ASTNode *prog = ast_program(a, stmts, stmt_count);
+  free(stmts);
+  return prog;
 }
 
-val *val_read(char *s) {
-  val *tokens = val_tokenize(s);
-  val *ast = val_parse(tokens);
-  val_del(tokens);
+ASTNode *parse_source(Arena *a, const char *source) {
+  TokenList tl = tokenize(source);
+  ASTNode *ast = parse(a, &tl);
+  tokenlist_free(&tl);
   return ast;
 }
