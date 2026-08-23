@@ -20,27 +20,36 @@ char *vclang_strdup(const char *s);
 #define realloc(p, s) vclang_realloc(p, s)
 #define strdup(s) vclang_strdup(s)
 
-// --- Arena Allocator (for AST nodes) ---
+// --- Arena Allocator (for AST nodes and custom memory) ---
 typedef struct Arena {
     char  *buf;
     size_t used;
     size_t cap;
     struct Arena *prev;
+    int   refcount;
 } Arena;
 
 Arena *arena_new(size_t initial_cap);
 void  *arena_alloc(Arena *a, size_t size);
 char  *arena_strdup(Arena *a, const char *s);
 void   arena_free(Arena *a);
+void   arena_reset(Arena *a);
+size_t arena_used(Arena *a);
 size_t arena_get_total_allocated(void);
 void   arena_reset_total_allocated(void);
 
 // --- Value Lifecycle (runtime values only) ---
 typedef struct Value Value;
+struct ASTNode;
 
 Value  val_new_int(long x);
 Value  val_new_float(double x);
 Value  val_new_str(const char *s);
+Value  val_new_array(int cap);
+void   val_array_push(Value *arr, Value v);
+Value  val_new_arena(size_t cap);
+Value  val_new_func(const char *name, const char **params, int param_count, const struct ASTNode *body);
+Value  val_new_return(Value v);
 Value  val_new_err(const char *msg, int line);
 Value  val_new_break(void);
 Value  val_new_continue(void);

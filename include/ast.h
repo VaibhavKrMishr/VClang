@@ -21,7 +21,12 @@ typedef enum {
     AST_PROGRAM,
     AST_RETURN,
     AST_BREAK,
-    AST_CONTINUE
+    AST_CONTINUE,
+    AST_FUNC_DEF,
+    AST_ARRAY_LIT,
+    AST_INDEX,
+    AST_INDEX_ASSIGN,
+    AST_NEW
 } ASTNodeType;
 
 typedef struct ASTNode ASTNode;
@@ -61,6 +66,36 @@ struct ASTNode {
         } block;                        // AST_BLOCK, AST_PROGRAM
 
         struct { const ASTNode *expr; } ret;
+
+        struct {
+            const char *name;
+            const char **params;
+            int param_count;
+            const ASTNode *body;
+        } func_def;
+
+        struct {
+            const ASTNode **elements;
+            int count;
+        } array_lit;
+
+        struct {
+            const ASTNode *target;
+            const ASTNode *index;
+        } index_expr;
+
+        struct {
+            const ASTNode *target;
+            const ASTNode *index;
+            const ASTNode *value;
+        } index_assign;
+
+        struct {
+            const ASTNode *allocator;
+            const char *type_name;
+            const ASTNode *size_expr;
+            const ASTNode *init_expr;
+        } new_expr;
     };
 };
 
@@ -89,5 +124,14 @@ ASTNode *ast_program(Arena *a, const ASTNode **stmts, int count);
 ASTNode *ast_return(Arena *a, const ASTNode *expr, int line);
 ASTNode *ast_break(Arena *a, int line);
 ASTNode *ast_continue(Arena *a, int line);
+ASTNode *ast_func_def(Arena *a, const char *name,
+                      const char **params, int param_count,
+                      const ASTNode *body, int line);
+ASTNode *ast_array_lit(Arena *a, const ASTNode **elements, int count, int line);
+ASTNode *ast_index(Arena *a, const ASTNode *target, const ASTNode *index, int line);
+ASTNode *ast_index_assign(Arena *a, const ASTNode *target, const ASTNode *index,
+                          const ASTNode *value, int line);
+ASTNode *ast_new_expr(Arena *a, const ASTNode *allocator, const char *type_name,
+                      const ASTNode *size_expr, const ASTNode *init_expr, int line);
 
 #endif // VCLANG_AST_H

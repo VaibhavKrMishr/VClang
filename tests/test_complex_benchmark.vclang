@@ -1,0 +1,189 @@
+println("=================================================");
+println("       🚀 V-CLANG COMPLEX ALGORITHM SUITE        ");
+println("=================================================\n");
+
+// =======================================================
+// 1. Math Utility: Integer & Float Square Root (Newton-Raphson)
+// =======================================================
+func sqrt(float val) {
+    if (val <= 0.0) { return 0.0; }
+    float guess = val / 2.0;
+    if (guess == 0.0) { guess = 1.0; }
+    for (int iter = 0; iter < 20; iter = iter + 1) {
+        guess = (guess + (val / guess)) / 2.0;
+    }
+    return guess;
+}
+
+// =======================================================
+// 2. Number Theory: Sieve of Eratosthenes
+// =======================================================
+println("--- 1. Sieve of Eratosthenes (Primes up to 50) ---");
+func find_primes(int limit) {
+    int[] is_prime = new int[limit + 1];
+    for (int i = 2; i <= limit; i = i + 1) {
+        is_prime[i] = 1;
+    }
+
+    for (int p = 2; p * p <= limit; p = p + 1) {
+        if (is_prime[p] == 1) {
+            for (int multiple = p * p; multiple <= limit; multiple = multiple + p) {
+                is_prime[multiple] = 0;
+            }
+        }
+    }
+
+    int[] primes = new int[0];
+    for (int i = 2; i <= limit; i = i + 1) {
+        if (is_prime[i] == 1) {
+            push(primes, i);
+        }
+    }
+    return primes;
+}
+
+int[] prime_list = find_primes(50);
+print("Primes: "); println(prime_list);
+print("Total primes found: "); println(len(prime_list));
+
+// =======================================================
+// 3. Sorting: In-Place Recursive QuickSort
+// =======================================================
+println("\n--- 2. In-Place Recursive QuickSort ---");
+func partition(int[] arr, int low, int high) {
+    int pivot = arr[high];
+    int i = low - 1;
+
+    for (int j = low; j < high; j = j + 1) {
+        if (arr[j] <= pivot) {
+            i = i + 1;
+            int temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+    }
+    int swap_temp = arr[i + 1];
+    arr[i + 1] = arr[high];
+    arr[high] = swap_temp;
+    return i + 1;
+}
+
+func quicksort(int[] arr, int low, int high) {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quicksort(arr, low, pi - 1);
+        quicksort(arr, pi + 1, high);
+    }
+    return 0;
+}
+
+int[] raw_data = [64, 34, 25, 12, 22, 11, 90, 88, 45, 5, 77, 31];
+print("Unsorted array: "); println(raw_data);
+quicksort(raw_data, 0, len(raw_data) - 1);
+print("Sorted array:   "); println(raw_data);
+
+// =======================================================
+// 4. Data Science: Vector Operations & Statistics
+// =======================================================
+println("\n--- 3. Data Science & Vector Statistics ---");
+
+func vector_dot(float[] a, float[] b) {
+    if (len(a) != len(b)) { return 0.0; }
+    float dot = 0.0;
+    for (int i = 0; i < len(a); i = i + 1) {
+        dot = dot + (a[i] * b[i]);
+    }
+    return dot;
+}
+
+func vector_magnitude(float[] v) {
+    return sqrt(vector_dot(v, v));
+}
+
+func compute_mean(float[] data) {
+    float total = 0.0;
+    for (int i = 0; i < len(data); i = i + 1) {
+        total = total + data[i];
+    }
+    return total / float(len(data));
+}
+
+func compute_variance(float[] data, float mean) {
+    float sum_sq_diff = 0.0;
+    for (int i = 0; i < len(data); i = i + 1) {
+        float diff = data[i] - mean;
+        sum_sq_diff = sum_sq_diff + (diff * diff);
+    }
+    return sum_sq_diff / float(len(data));
+}
+
+float[] vec_a = [1.0, 2.0, 3.0, 4.0, 5.0];
+float[] vec_b = [2.0, 4.0, 6.0, 8.0, 10.0];
+
+float dot_prod = vector_dot(vec_a, vec_b);
+print("Dot Product (vec_a . vec_b): "); println(dot_prod);
+
+float mag_a = vector_magnitude(vec_a);
+print("Euclidean Norm |vec_a|:      "); println(mag_a);
+
+float[] dataset = [12.5, 14.2, 15.8, 18.0, 19.5, 22.1, 25.4, 28.9];
+float mean_val = compute_mean(dataset);
+float var_val  = compute_variance(dataset, mean_val);
+float std_dev  = sqrt(var_val);
+
+print("Dataset:            "); println(dataset);
+print("Mean (Average):     "); println(mean_val);
+print("Variance (sigma^2): "); println(var_val);
+print("Std Deviation:      "); println(std_dev);
+
+// =======================================================
+// 5. Dynamic Programming: Fibonacci with Memoization Table
+// =======================================================
+println("\n--- 4. Dynamic Programming (Fibonacci Memoization) ---");
+func fib_dp(int n) {
+    if (n <= 0) { return 0; }
+    if (n == 1) { return 1; }
+
+    int[] table = new int[n + 1];
+    table[0] = 0;
+    table[1] = 1;
+
+    for (int i = 2; i <= n; i = i + 1) {
+        table[i] = table[i - 1] + table[i - 2];
+    }
+    return table[n];
+}
+
+for (int i = 1; i <= 15; i = i + 1) {
+    print(fib_dp(i));
+    if (i < 15) { print(", "); }
+}
+println("");
+
+// =======================================================
+// 6. High-Performance Arena Batch Simulation
+// =======================================================
+println("\n--- 5. Arena-Backed High-Performance Batch Simulation ---");
+Arena batch_pool = new_arena(16384);
+print("Batch Arena initialized: "); println(batch_pool);
+
+int total_processed_items = 0;
+
+for (int batch = 1; batch <= 5; batch = batch + 1) {
+    // Allocate 100-item vector within the arena
+    int[] batch_buffer = new(batch_pool) int[100];
+    for (int k = 0; k < 100; k = k + 1) {
+        batch_buffer[k] = (batch * 100) + k;
+    }
+    total_processed_items = total_processed_items + len(batch_buffer);
+
+    // Reset arena memory for next iteration (O(1) wipe)
+    reset_arena(batch_pool);
+}
+
+print("Total batch elements processed: "); println(total_processed_items);
+print("Batch Arena after 5 cycles:     "); println(batch_pool);
+
+println("\n=================================================");
+println("       ✅ COMPLEX PROGRAM SUCCEEDED!             ");
+println("=================================================");

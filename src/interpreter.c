@@ -228,16 +228,126 @@ static Value eval_builtin_call(Env *e, const char *fname,
   if (strcmp(fname, "len") == 0) {
     if (argc != 1) return val_new_err("len() takes 1 argument", line);
     Value v = eval(e, args[0]);
-    if (v.type != VAL_STR) {
+    if (v.type == VAL_STR) {
+      Value res = val_new_int((long)strlen(v.str));
       val_clear(&v);
-      return val_new_err("len() expects a string", line);
+      return res;
+    } else if (v.type == VAL_ARRAY) {
+      Value res = val_new_int((long)(v.arr ? v.arr->count : 0));
+      val_clear(&v);
+      return res;
+    } else {
+      val_clear(&v);
+      return val_new_err("len() expects a string or array", line);
     }
-    Value res = val_new_int((long)strlen(v.str));
+  }
+
+  // push(arr, val)
+  if (strcmp(fname, "push") == 0) {
+    if (argc != 2) return val_new_err("push() takes 2 arguments (array, value)", line);
+    if (args[0]->type != AST_IDENT) {
+      return val_new_err("push() first argument must be an array variable name", line);
+    }
+    const Value *target = env_peek(e, args[0]->str_val);
+    if (!target || target->type != VAL_ARRAY) {
+      return val_new_err("push() target must be an array", line);
+    }
+    Value elem = eval(e, args[1]);
+    val_array_push((Value *)target, elem);
+    val_clear(&elem);
+    return val_new_int(0);
+  }
+
+  // new_arena([cap]) / Arena([cap])
+  if (strcmp(fname, "new_arena") == 0 || strcmp(fname, "Arena") == 0) {
+    size_t cap = 4096;
+    if (argc == 1) {
+      Value v = eval(e, args[0]);
+      if (v.type == VAL_INT && v.num > 0) cap = (size_t)v.num;
+      val_clear(&v);
+    }
+    return val_new_arena(cap);
+  }
+
+  // reset_arena(arena) / arena_reset(arena)
+  if (strcmp(fname, "reset_arena") == 0 || strcmp(fname, "arena_reset") == 0) {
+    if (argc != 1) return val_new_err("reset_arena() takes 1 argument", line);
+    Value v = eval(e, args[0]);
+    if (v.type != VAL_ARENA || !v.arena) {
+      val_clear(&v);
+      return val_new_err("reset_arena() expects an Arena", line);
+    }
+    arena_reset(v.arena);
     val_clear(&v);
-    return res;
+    return val_new_int(0);
+  }
+
+  // arena_used(arena)
+  if (strcmp(fname, "arena_used") == 0) {
+    if (argc != 1) return val_new_err("arena_used() takes 1 argument", line);
+    Value v = eval(e, args[0]);
+    if (v.type != VAL_ARENA || !v.arena) {
+      val_clear(&v);
+      return val_new_err("arena_used() expects an Arena", line);
+    }
+    size_t used = arena_used(v.arena);
+    val_clear(&v);
+    return val_new_int((long)used);
   }
 
   return val_new_err("Function not defined", line);
+}
+
+// User-defined and built-in function dispatch
+static Value eval_call(Env *e, const char *fname,
+                       const ASTNode **args, int argc, int line) {
+  const Value *fn_val = env_peek(e, fname);
+  if (fn_val && fn_val->type == VAL_FUNC) {
+    if (argc != fn_val->func.param_count) {
+      char err_msg[128];
+      snprintf(err_msg, sizeof(err_msg),
+               "Function '%s' expects %d arguments, got %d",
+               fname, fn_val->func.param_count, argc);
+      return val_new_err(err_msg, line);
+    }
+
+    // Evaluate arguments in caller's environment
+    Value *evaled_args = (Value *)malloc(sizeof(Value) * (argc > 0 ? argc : 1));
+    for (int i = 0; i < argc; i++) {
+      evaled_args[i] = eval(e, args[i]);
+      if (evaled_args[i].type == VAL_ERR) {
+        Value err = val_copy(evaled_args[i]);
+        for (int j = 0; j <= i; j++) val_clear(&evaled_args[j]);
+        free(evaled_args);
+        return err;
+      }
+    }
+
+    // Create function environment linked to caller/global env
+    Env *fn_env = env_new(e);
+    for (int i = 0; i < argc; i++) {
+      env_def(fn_env, fn_val->func.params[i], evaled_args[i]);
+      val_clear(&evaled_args[i]);
+    }
+    free(evaled_args);
+
+    const ASTNode *body = fn_val->func.body;
+    Value res = eval(fn_env, body);
+    env_del(fn_env);
+
+    if (res.type == VAL_RETURN) {
+      Value unwrapped = val_copy(*res.ret.val);
+      val_clear(&res);
+      return unwrapped;
+    }
+    if (res.type == VAL_BREAK || res.type == VAL_CONTINUE) {
+      val_clear(&res);
+      return val_new_int(0);
+    }
+    return res;
+  }
+
+  return eval_builtin_call(e, fname, args, argc, line);
 }
 
 // ============================================================
@@ -398,9 +508,168 @@ Value eval(Env *e, const ASTNode *node) {
   }
 
   case AST_CALL:
-    return eval_builtin_call(e, node->call.func_name,
-                             node->call.args, node->call.arg_count,
-                             node->line);
+    return eval_call(e, node->call.func_name,
+                     node->call.args, node->call.arg_count,
+                     node->line);
+
+  case AST_FUNC_DEF: {
+    Value f = val_new_func(node->func_def.name,
+                           node->func_def.params,
+                           node->func_def.param_count,
+                           node->func_def.body);
+    env_def(e, node->func_def.name, f);
+    return f;
+  }
+
+  case AST_ARRAY_LIT: {
+    Value arr = val_new_array(node->array_lit.count);
+    for (int i = 0; i < node->array_lit.count; i++) {
+      Value elem = eval(e, node->array_lit.elements[i]);
+      val_array_push(&arr, elem);
+      val_clear(&elem);
+    }
+    return arr;
+  }
+
+  case AST_INDEX: {
+    Value target = eval(e, node->index_expr.target);
+    Value index  = eval(e, node->index_expr.index);
+    if (index.type != VAL_INT) {
+      val_clear(&target);
+      val_clear(&index);
+      return val_new_err("Array index must be an integer", node->line);
+    }
+    long idx = index.num;
+    val_clear(&index);
+
+    if (target.type == VAL_ARRAY) {
+      if (!target.arr || idx < 0 || idx >= target.arr->count) {
+        val_clear(&target);
+        return val_new_err("Array index out of bounds", node->line);
+      }
+      Value result = val_copy(target.arr->items[idx]);
+      val_clear(&target);
+      return result;
+    } else if (target.type == VAL_STR) {
+      long slen = (long)strlen(target.str);
+      if (idx < 0 || idx >= slen) {
+        val_clear(&target);
+        return val_new_err("String index out of bounds", node->line);
+      }
+      char buf[2] = { target.str[idx], '\0' };
+      val_clear(&target);
+      return val_new_str(buf);
+    } else {
+      val_clear(&target);
+      return val_new_err("Cannot index non-array/string value", node->line);
+    }
+  }
+
+  case AST_INDEX_ASSIGN: {
+    Value target;
+    if (node->index_assign.target->type == AST_IDENT) {
+      const char *name = node->index_assign.target->str_val;
+      const Value *peeked = env_peek(e, name);
+      if (!peeked || peeked->type != VAL_ARRAY || !peeked->arr) {
+        return val_new_err("Target for index assignment must be an array variable", node->line);
+      }
+      target = val_copy(*peeked);
+    } else {
+      target = eval(e, node->index_assign.target);
+      if (target.type != VAL_ARRAY || !target.arr) {
+        val_clear(&target);
+        return val_new_err("Target for index assignment must evaluate to an array", node->line);
+      }
+    }
+
+    Value index = eval(e, node->index_assign.index);
+    if (index.type != VAL_INT) {
+      val_clear(&target);
+      val_clear(&index);
+      return val_new_err("Array index must be an integer", node->line);
+    }
+    long idx = index.num;
+    val_clear(&index);
+
+    if (idx < 0 || idx >= target.arr->count) {
+      val_clear(&target);
+      return val_new_err("Array index out of bounds", node->line);
+    }
+    Value new_val = eval(e, node->index_assign.value);
+    val_clear(&target.arr->items[idx]);
+    target.arr->items[idx] = val_copy(new_val);
+    val_clear(&target);
+    return new_val;
+  }
+
+  case AST_NEW: {
+    // Optional allocator evaluation
+    Value alloc_val = val_new_int(0);
+    if (node->new_expr.allocator) {
+      alloc_val = eval(e, node->new_expr.allocator);
+    }
+
+    // Instantiating Arena: new Arena() or new Arena(cap)
+    if (node->new_expr.type_name &&
+        (strcmp(node->new_expr.type_name, "Arena") == 0 || strcmp(node->new_expr.type_name, "arena") == 0)) {
+      size_t cap = 4096;
+      if (node->new_expr.init_expr) {
+        Value iv = eval(e, node->new_expr.init_expr);
+        if (iv.type == VAL_INT && iv.num > 0) cap = (size_t)iv.num;
+        val_clear(&iv);
+      }
+      val_clear(&alloc_val);
+      return val_new_arena(cap);
+    }
+
+    // Sized array allocation: new int[10] or new byte[1024]
+    if (node->new_expr.size_expr) {
+      Value sz = eval(e, node->new_expr.size_expr);
+      if (sz.type != VAL_INT || sz.num < 0) {
+        val_clear(&sz);
+        val_clear(&alloc_val);
+        return val_new_err("Array size must be a non-negative integer", node->line);
+      }
+      int count = (int)sz.num;
+      val_clear(&sz);
+
+      Value arr = val_new_array(count > 0 ? count : 4);
+      if (node->new_expr.init_expr) {
+        Value init = eval(e, node->new_expr.init_expr);
+        if (init.type == VAL_ARRAY && init.arr) {
+          for (int i = 0; i < count; i++) {
+            if (i < init.arr->count) {
+              val_array_push(&arr, init.arr->items[i]);
+            } else {
+              Value zero = val_new_int(0);
+              val_array_push(&arr, zero);
+              val_clear(&zero);
+            }
+          }
+        }
+        val_clear(&init);
+      } else {
+        for (int i = 0; i < count; i++) {
+          Value zero = val_new_int(0);
+          val_array_push(&arr, zero);
+          val_clear(&zero);
+        }
+      }
+      val_clear(&alloc_val);
+      return arr;
+    }
+
+    // Immediate array initializer: new [1, 2, 3] or new int[]([1, 2, 3])
+    if (node->new_expr.init_expr) {
+      Value init = eval(e, node->new_expr.init_expr);
+      val_clear(&alloc_val);
+      return init;
+    }
+
+    // Default fallback
+    val_clear(&alloc_val);
+    return val_new_array(4);
+  }
 
   case AST_DECL: {
     Value v = eval(e, node->decl.value);
@@ -441,7 +710,9 @@ Value eval(Env *e, const ASTNode *node) {
         res = val_new_int(0);
         break;
       }
-      if (res.type == VAL_ERR) break;
+      if (res.type == VAL_RETURN || res.type == VAL_ERR) {
+        return res;
+      }
       // VAL_CONTINUE: just loop again
     }
     return res;
@@ -449,8 +720,7 @@ Value eval(Env *e, const ASTNode *node) {
 
   case AST_FOR_BODY: {
     Value res = eval(e, node->for_body.body);
-    if (res.type == VAL_BREAK) {
-      // Propagate break up so the while loop sees it
+    if (res.type == VAL_BREAK || res.type == VAL_RETURN) {
       return res;
     }
     // Even if continue, we run the step
@@ -467,7 +737,7 @@ Value eval(Env *e, const ASTNode *node) {
       val_clear(&res);
       res = eval(local, node->block.stmts[i]);
       if (res.type == VAL_BREAK || res.type == VAL_CONTINUE ||
-          res.type == VAL_ERR) {
+          res.type == VAL_RETURN || res.type == VAL_ERR) {
         env_del(local);
         return res;
       }
@@ -482,7 +752,12 @@ Value eval(Env *e, const ASTNode *node) {
       val_clear(&res);
       res = eval(e, node->block.stmts[i]);
       if (res.type == VAL_BREAK || res.type == VAL_CONTINUE ||
-          res.type == VAL_ERR) {
+          res.type == VAL_RETURN || res.type == VAL_ERR) {
+        if (res.type == VAL_RETURN) {
+          Value unwrapped = val_copy(*res.ret.val);
+          val_clear(&res);
+          return unwrapped;
+        }
         return res;
       }
     }
@@ -490,8 +765,10 @@ Value eval(Env *e, const ASTNode *node) {
   }
 
   case AST_RETURN: {
-    // For now, just evaluate and return
-    return eval(e, node->ret.expr);
+    Value ret_val = node->ret.expr ? eval(e, node->ret.expr) : val_new_int(0);
+    Value res = val_new_return(ret_val);
+    val_clear(&ret_val);
+    return res;
   }
 
   case AST_BREAK:

@@ -1,0 +1,54 @@
+println("=== 1. Sized Heap Array Allocation with new ===");
+int[] buf = new int[5];
+print("Initial new int[5]: "); println(buf);
+print("len(buf): "); println(len(buf));
+
+buf[0] = 100;
+buf[1] = 200;
+buf[4] = 500;
+print("buf after assignments: "); println(buf);
+
+println("\n=== 2. Literal Allocation with new ===");
+int[] nums = new [10, 20, 30];
+print("nums: "); println(nums);
+push(nums, 40);
+print("nums after push(40): "); println(nums);
+
+println("\n=== 3. Fixed-size Stack Array Syntax ===");
+int stack_arr[4];
+stack_arr[0] = 7;
+stack_arr[1] = 14;
+stack_arr[2] = 21;
+stack_arr[3] = 28;
+print("stack_arr: "); println(stack_arr);
+
+println("\n=== 4. Custom Arena Allocators ===");
+Arena my_arena = new_arena(2048);
+print("Created arena: "); println(my_arena);
+
+// Allocate within arena
+int[] fast_list = new(my_arena) [1, 2, 3, 4, 5];
+print("fast_list in arena: "); println(fast_list);
+push(fast_list, 6);
+print("fast_list after push: "); println(fast_list);
+
+print("Arena used bytes: "); println(arena_used(my_arena));
+
+// Reset arena
+reset_arena(my_arena);
+print("Arena after reset: "); println(my_arena);
+
+println("\n=== 5. Functions with new and Arenas ===");
+func make_sequence(Arena a, int count) {
+    int[] seq = new(a) int[count];
+    for (int i = 0; i < count; i = i + 1) {
+        seq[i] = (i + 1) * 10;
+    }
+    return seq;
+}
+
+Arena temp_pool = new Arena();
+int[] sequence = make_sequence(temp_pool, 6);
+print("Generated sequence: "); println(sequence);
+
+println("\n=== All Universal Memory & 'new' Tests Passed ===");

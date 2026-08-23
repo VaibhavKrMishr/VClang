@@ -70,6 +70,7 @@ Arena *arena_new(size_t initial_cap) {
   a->used = 0;
   a->cap  = initial_cap;
   a->prev = NULL;
+  a->refcount = 1;
   return a;
 }
 
@@ -106,6 +107,7 @@ char *arena_strdup(Arena *a, const char *s) {
 }
 
 void arena_free(Arena *a) {
+  if (!a) return;
   // Walk the linked list of blocks and free them all
   Arena *cur = a->prev;
   free(a->buf);
@@ -121,6 +123,30 @@ void arena_free(Arena *a) {
   a->cap  = 0;
   a->prev = NULL;
   free(a);
+}
+
+void arena_reset(Arena *a) {
+  if (!a) return;
+  Arena *cur = a->prev;
+  while (cur) {
+    Arena *prev = cur->prev;
+    free(cur->buf);
+    free(cur);
+    cur = prev;
+  }
+  a->prev = NULL;
+  a->used = 0;
+}
+
+size_t arena_used(Arena *a) {
+  if (!a) return 0;
+  size_t total = a->used;
+  Arena *cur = a->prev;
+  while (cur) {
+    total += cur->used;
+    cur = cur->prev;
+  }
+  return total;
 }
 
 size_t arena_get_total_allocated(void) {
@@ -162,6 +188,64 @@ Value val_new_str(const char *s) {
   return v;
 }
 
+Value val_new_array(int cap) {
+  if (cap <= 0) cap = 4;
+  Value v;
+  v.type = VAL_ARRAY;
+  v.line = -1;
+  v.arr = (ArrayBuffer *)malloc(sizeof(ArrayBuffer));
+  v.arr->items = (Value *)malloc(sizeof(Value) * cap);
+  v.arr->count = 0;
+  v.arr->cap   = cap;
+  v.arr->refcount = 1;
+  return v;
+}
+
+void val_array_push(Value *arr, Value v) {
+  if (arr->type != VAL_ARRAY || !arr->arr) return;
+  if (arr->arr->count >= arr->arr->cap) {
+    arr->arr->cap = (arr->arr->cap == 0) ? 4 : arr->arr->cap * 2;
+    arr->arr->items = (Value *)realloc(arr->arr->items, sizeof(Value) * arr->arr->cap);
+  }
+  arr->arr->items[arr->arr->count++] = val_copy(v);
+}
+
+Value val_new_arena(size_t cap) {
+  Value v;
+  v.type = VAL_ARENA;
+  v.line = -1;
+  v.arena = arena_new(cap);
+  return v;
+}
+
+Value val_new_func(const char *name, const char **params, int param_count,
+                   const struct ASTNode *body) {
+  Value v;
+  v.type = VAL_FUNC;
+  v.line = -1;
+  v.func.name = vclang_strdup(name);
+  v.func.param_count = param_count;
+  if (param_count > 0) {
+    v.func.params = (char **)malloc(sizeof(char *) * param_count);
+    for (int i = 0; i < param_count; i++) {
+      v.func.params[i] = vclang_strdup(params[i]);
+    }
+  } else {
+    v.func.params = NULL;
+  }
+  v.func.body = body;
+  return v;
+}
+
+Value val_new_return(Value ret_v) {
+  Value v;
+  v.type = VAL_RETURN;
+  v.line = -1;
+  v.ret.val = (Value *)malloc(sizeof(Value));
+  *v.ret.val = val_copy(ret_v);
+  return v;
+}
+
 Value val_new_err(const char *msg, int line) {
   Value v;
   v.type = VAL_ERR;
@@ -188,18 +272,77 @@ Value val_new_continue(void) {
 
 Value val_copy(Value v) {
   // v is already a struct copy (passed by value).
-  // Deep-copy only the heap-owned string data.
-  if (v.type == VAL_STR) v.str = vclang_strdup(v.str);
-  if (v.type == VAL_ERR) v.err = vclang_strdup(v.err);
+  if (v.type == VAL_STR) {
+    v.str = vclang_strdup(v.str);
+  } else if (v.type == VAL_ERR) {
+    v.err = vclang_strdup(v.err);
+  } else if (v.type == VAL_ARRAY) {
+    if (v.arr) v.arr->refcount++;
+  } else if (v.type == VAL_FUNC) {
+    v.func.name = vclang_strdup(v.func.name);
+    if (v.func.param_count > 0) {
+      char **new_params = (char **)malloc(sizeof(char *) * v.func.param_count);
+      for (int i = 0; i < v.func.param_count; i++) {
+        new_params[i] = vclang_strdup(v.func.params[i]);
+      }
+      v.func.params = new_params;
+    } else {
+      v.func.params = NULL;
+    }
+  } else if (v.type == VAL_ARENA) {
+    if (v.arena) v.arena->refcount++;
+  } else if (v.type == VAL_RETURN) {
+    Value *r = (Value *)malloc(sizeof(Value));
+    *r = val_copy(*v.ret.val);
+    v.ret.val = r;
+  }
   return v;
 }
 
 void val_clear(Value *v) {
   if (!v) return;
-  // M-3 fix: early return for non-heap types (the common case)
-  if (v->type < VAL_STR) return;
-  if (v->type == VAL_STR) free(v->str);
-  else if (v->type == VAL_ERR) free(v->err);
+  if (v->type == VAL_INT || v->type == VAL_FLOAT || v->type == VAL_BREAK || v->type == VAL_CONTINUE)
+    return;
+  if (v->type == VAL_STR) {
+    free(v->str);
+  } else if (v->type == VAL_ERR) {
+    free(v->err);
+  } else if (v->type == VAL_ARENA) {
+    if (v->arena) {
+      v->arena->refcount--;
+      if (v->arena->refcount <= 0) {
+        arena_free(v->arena);
+      }
+      v->arena = NULL;
+    }
+  } else if (v->type == VAL_ARRAY) {
+    if (v->arr) {
+      v->arr->refcount--;
+      if (v->arr->refcount <= 0) {
+        for (int i = 0; i < v->arr->count; i++) {
+          val_clear(&v->arr->items[i]);
+        }
+        free(v->arr->items);
+        free(v->arr);
+      }
+      v->arr = NULL;
+    }
+  } else if (v->type == VAL_FUNC) {
+    if (v->func.name) free(v->func.name);
+    if (v->func.params) {
+      for (int i = 0; i < v->func.param_count; i++) {
+        free(v->func.params[i]);
+      }
+      free(v->func.params);
+      v->func.params = NULL;
+    }
+  } else if (v->type == VAL_RETURN) {
+    if (v->ret.val) {
+      val_clear(v->ret.val);
+      free(v->ret.val);
+      v->ret.val = NULL;
+    }
+  }
 }
 
 void val_print(Value v) {
@@ -212,6 +355,34 @@ void val_print(Value v) {
     break;
   case VAL_STR:
     printf("%s", v.str);
+    break;
+  case VAL_ARRAY:
+    putchar('[');
+    if (v.arr) {
+      for (int i = 0; i < v.arr->count; i++) {
+        if (v.arr->items[i].type == VAL_STR) {
+          printf("\"%s\"", v.arr->items[i].str);
+        } else {
+          val_print(v.arr->items[i]);
+        }
+        if (i < v.arr->count - 1) printf(", ");
+      }
+    }
+    putchar(']');
+    break;
+  case VAL_FUNC:
+    printf("<function %s(", v.func.name ? v.func.name : "anonymous");
+    for (int i = 0; i < v.func.param_count; i++) {
+      printf("%s", v.func.params[i]);
+      if (i < v.func.param_count - 1) printf(", ");
+    }
+    printf(")>");
+    break;
+  case VAL_ARENA:
+    printf("<Arena used=%zu cap=%zu>", arena_used(v.arena), v.arena ? v.arena->cap : 0);
+    break;
+  case VAL_RETURN:
+    if (v.ret.val) val_print(*v.ret.val);
     break;
   case VAL_ERR:
     if (v.line > 0)
@@ -233,4 +404,5 @@ void val_println(Value v) {
   putchar('\n');
   fflush(stdout);
 }
+
 

@@ -179,3 +179,74 @@ ASTNode *ast_continue(Arena *a, int line) {
   n->line    = line;
   return n;
 }
+
+ASTNode *ast_func_def(Arena *a, const char *name,
+                      const char **params, int param_count,
+                      const ASTNode *body, int line) {
+  ASTNode *n              = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                 = AST_FUNC_DEF;
+  n->line                 = line;
+  n->func_def.name        = arena_strdup(a, name);
+  n->func_def.param_count = param_count;
+  if (param_count > 0) {
+    const char **p = (const char **)arena_alloc(a, sizeof(char *) * param_count);
+    for (int i = 0; i < param_count; i++) {
+      p[i] = arena_strdup(a, params[i]);
+    }
+    n->func_def.params = p;
+  } else {
+    n->func_def.params = NULL;
+  }
+  n->func_def.body = body;
+  return n;
+}
+
+ASTNode *ast_array_lit(Arena *a, const ASTNode **elements, int count, int line) {
+  ASTNode *n            = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type               = AST_ARRAY_LIT;
+  n->line               = line;
+  n->array_lit.count    = count;
+  if (count > 0) {
+    const ASTNode **elems = (const ASTNode **)arena_alloc(
+        a, sizeof(ASTNode *) * count);
+    memcpy(elems, elements, sizeof(ASTNode *) * count);
+    n->array_lit.elements = elems;
+  } else {
+    n->array_lit.elements = NULL;
+  }
+  return n;
+}
+
+ASTNode *ast_index(Arena *a, const ASTNode *target, const ASTNode *index, int line) {
+  ASTNode *n           = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type              = AST_INDEX;
+  n->line              = line;
+  n->index_expr.target = target;
+  n->index_expr.index  = index;
+  return n;
+}
+
+ASTNode *ast_index_assign(Arena *a, const ASTNode *target, const ASTNode *index,
+                          const ASTNode *value, int line) {
+  ASTNode *n             = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                = AST_INDEX_ASSIGN;
+  n->line                = line;
+  n->index_assign.target = target;
+  n->index_assign.index  = index;
+  n->index_assign.value  = value;
+  return n;
+}
+
+ASTNode *ast_new_expr(Arena *a, const ASTNode *allocator, const char *type_name,
+                      const ASTNode *size_expr, const ASTNode *init_expr, int line) {
+  ASTNode *n            = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type               = AST_NEW;
+  n->line               = line;
+  n->new_expr.allocator = allocator;
+  n->new_expr.type_name = type_name ? arena_strdup(a, type_name) : NULL;
+  n->new_expr.size_expr = size_expr;
+  n->new_expr.init_expr = init_expr;
+  return n;
+}
+
+

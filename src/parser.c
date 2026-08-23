@@ -47,6 +47,16 @@ static int match_ident(Parser *p, const char *kw) {
   return 0;
 }
 
+static int is_type_token(Parser *p) {
+  const Token *t = peek(p);
+  if (t->type != TOK_IDENT) return 0;
+  return (strcmp(t->sval, "int") == 0 || strcmp(t->sval, "float") == 0 ||
+          strcmp(t->sval, "string") == 0 || strcmp(t->sval, "array") == 0 ||
+          strcmp(t->sval, "var") == 0 || strcmp(t->sval, "let") == 0 ||
+          strcmp(t->sval, "byte") == 0 || strcmp(t->sval, "bool") == 0 ||
+          strcmp(t->sval, "Arena") == 0 || strcmp(t->sval, "arena") == 0);
+}
+
 // Forward declarations
 static ASTNode *parse_expr(Parser *p);
 static ASTNode *parse_statement(Parser *p);
@@ -77,6 +87,7 @@ static int expect_op(Parser *p, const char *op) {
 
 static ASTNode *parse_factor(Parser *p) {
   const Token *t = peek(p);
+  ASTNode *base = NULL;
 
   // Unary NOT
   if (t->type == TOK_OP && strcmp(t->sval, "!") == 0) {
@@ -85,33 +96,103 @@ static ASTNode *parse_factor(Parser *p) {
     return ast_unary_op(p->arena, OP_NOT, operand, t->line);
   }
 
+  // New expression: new [1, 2, 3] or new(arena) [1, 2, 3] or new int[10] or new Arena()
+  if (match_ident(p, "new")) {
+    int line = t->line;
+    ASTNode *allocator = NULL;
+    if (match_op(p, "(")) {
+      allocator = parse_expr(p);
+      expect_op(p, ")");
+    }
+
+    // Direct array literal: new [1, 2, 3] or new(arena) [1, 2, 3]
+    if (check_op(p, "[")) {
+      ASTNode *init = parse_factor(p);
+      base = ast_new_expr(p->arena, allocator, NULL, NULL, init, line);
+    }
+    // Type name: int, byte, float, string, Arena, etc.
+    else if (peek(p)->type == TOK_IDENT) {
+      const Token *type_tok = advance(p);
+      const char *tname = type_tok->sval;
+
+      // Sized or typed array: new int[10] or new int[]([1, 2, 3])
+      if (match_op(p, "[")) {
+        if (!check_op(p, "]")) {
+          ASTNode *size_expr = parse_expr(p);
+          expect_op(p, "]");
+          base = ast_new_expr(p->arena, allocator, tname, size_expr, NULL, line);
+        } else {
+          expect_op(p, "]");
+          ASTNode *init = NULL;
+          if (match_op(p, "(")) {
+            init = parse_expr(p);
+            expect_op(p, ")");
+          }
+          base = ast_new_expr(p->arena, allocator, tname, NULL, init, line);
+        }
+      }
+      // Instantiation: new Arena() or new Arena(4096)
+      else if (match_op(p, "(")) {
+        ASTNode *init = NULL;
+        if (!check_op(p, ")")) {
+          init = parse_expr(p);
+        }
+        expect_op(p, ")");
+        base = ast_new_expr(p->arena, allocator, tname, NULL, init, line);
+      } else {
+        base = ast_new_expr(p->arena, allocator, tname, NULL, NULL, line);
+      }
+    } else {
+      parse_error(p, "expected type or array literal after 'new'");
+      base = ast_int_lit(p->arena, 0, line);
+    }
+  }
+  // Array literal: [e1, e2, ...]
+  else if (match_op(p, "[")) {
+    int line = t->line;
+    int elem_cap = 8;
+    int elem_count = 0;
+    const ASTNode **elems = (const ASTNode **)malloc(
+        sizeof(ASTNode *) * elem_cap);
+
+    if (!check_op(p, "]")) {
+      elems[elem_count++] = parse_expr(p);
+      while (match_op(p, ",")) {
+        if (check_op(p, "]")) break;
+        if (elem_count >= elem_cap) {
+          elem_cap *= 2;
+          elems = (const ASTNode **)realloc(
+              elems, sizeof(ASTNode *) * elem_cap);
+        }
+        elems[elem_count++] = parse_expr(p);
+      }
+    }
+    expect_op(p, "]");
+    base = ast_array_lit(p->arena, elems, elem_count, line);
+    free(elems);
+  }
   // Integer literal
-  if (t->type == TOK_INT) {
+  else if (t->type == TOK_INT) {
     advance(p);
-    return ast_int_lit(p->arena, t->ival, t->line);
+    base = ast_int_lit(p->arena, t->ival, t->line);
   }
-
   // Float literal
-  if (t->type == TOK_FLOAT) {
+  else if (t->type == TOK_FLOAT) {
     advance(p);
-    return ast_float_lit(p->arena, t->fval, t->line);
+    base = ast_float_lit(p->arena, t->fval, t->line);
   }
-
   // String literal
-  if (t->type == TOK_STRING) {
+  else if (t->type == TOK_STRING) {
     advance(p);
-    return ast_string_lit(p->arena, t->sval, t->line);
+    base = ast_string_lit(p->arena, t->sval, t->line);
   }
-
   // Parenthesized expression
-  if (match_op(p, "(")) {
-    ASTNode *e = parse_expr(p);
+  else if (match_op(p, "(")) {
+    base = parse_expr(p);
     expect_op(p, ")"); // P-3: report missing paren
-    return e;
   }
-
   // Identifier or function call
-  if (t->type == TOK_IDENT) {
+  else if (t->type == TOK_IDENT) {
     advance(p);
     // Function call?
     if (match_op(p, "(")) {
@@ -134,19 +215,29 @@ static ASTNode *parse_factor(Parser *p) {
       }
       expect_op(p, ")"); // P-3: report missing paren
 
-      ASTNode *node = ast_call(p->arena, t->sval, args, arg_count, t->line);
+      base = ast_call(p->arena, t->sval, args, arg_count, t->line);
       free(args); // Temporary — the arena copy is inside ast_call
-      return node;
+    } else {
+      // Plain identifier
+      base = ast_ident(p->arena, t->sval, t->line);
     }
-    // Plain identifier
-    return ast_ident(p->arena, t->sval, t->line);
+  } else {
+    // P-2 fix: report the error instead of silently producing a dummy node
+    parse_error(p, "unexpected token");
+    advance(p);
+    // Return a dummy int 0 to avoid NULL propagation
+    return ast_int_lit(p->arena, 0, t->line);
   }
 
-  // P-2 fix: report the error instead of silently producing a dummy node
-  parse_error(p, "unexpected token");
-  advance(p);
-  // Return a dummy int 0 to avoid NULL propagation
-  return ast_int_lit(p->arena, 0, t->line);
+  // Suffix indexing: base[idx]
+  while (match_op(p, "[")) {
+    int idx_line = peek(p)->line;
+    ASTNode *idx = parse_expr(p);
+    expect_op(p, "]");
+    base = ast_index(p->arena, base, idx, idx_line);
+  }
+
+  return base;
 }
 
 static ASTNode *parse_term(Parser *p) {
@@ -273,13 +364,98 @@ static ASTNode *parse_statement(Parser *p) {
     return parse_block(p);
   }
 
-  // Variable declaration: int/float/string name = expr;
-  if (check_ident(p, "int") || check_ident(p, "float") ||
-      check_ident(p, "string")) {
-    advance(p); // skip type keyword
-    const Token *name_tok = advance(p); // identifier name
-    match_op(p, "=");
-    ASTNode *val = parse_expr(p);
+  // Function definition: func name(param1, param2) { ... }
+  if (match_ident(p, "func") || match_ident(p, "def") || match_ident(p, "fn")) {
+    const Token *name_tok = peek(p);
+    if (name_tok->type != TOK_IDENT) {
+      parse_error(p, "expected function name");
+    }
+    advance(p);
+    expect_op(p, "(");
+
+    int pcap = 8;
+    int pcount = 0;
+    const char **params = (const char **)malloc(sizeof(char *) * pcap);
+
+    if (!check_op(p, ")")) {
+      // Optional type keyword before parameter name
+      if (is_type_token(p)) {
+        advance(p);
+        while (check_op(p, "[")) {
+          advance(p);
+          expect_op(p, "]");
+        }
+      }
+      const Token *ptok = peek(p);
+      if (ptok->type != TOK_IDENT) {
+        parse_error(p, "expected parameter name");
+      }
+      params[pcount++] = ptok->sval;
+      advance(p);
+
+      while (match_op(p, ",")) {
+        if (is_type_token(p)) {
+          advance(p);
+          while (check_op(p, "[")) {
+            advance(p);
+            expect_op(p, "]");
+          }
+        }
+        const Token *pt = peek(p);
+        if (pt->type != TOK_IDENT) {
+          parse_error(p, "expected parameter name");
+        }
+        if (pcount >= pcap) {
+          pcap *= 2;
+          params = (const char **)realloc(params, sizeof(char *) * pcap);
+        }
+        params[pcount++] = pt->sval;
+        advance(p);
+      }
+    }
+    expect_op(p, ")");
+    ASTNode *body = parse_block(p);
+    ASTNode *fdef = ast_func_def(p->arena, name_tok->sval, params, pcount, body, t->line);
+    free(params);
+    return fdef;
+  }
+
+  // Variable declaration: int x = 5; or int[][] arr = [[1], [2]]; or int arr[5]; or let x = 5;
+  if (is_type_token(p)) {
+    const Token *type_tok = advance(p); // skip type keyword
+    while (check_op(p, "[")) {
+      if (p->pos + 1 < p->tl->count && p->tl->tokens[p->pos + 1].type == TOK_OP &&
+          strcmp(p->tl->tokens[p->pos + 1].sval, "]") == 0) {
+        advance(p); // skip '['
+        advance(p); // skip ']'
+      } else {
+        break;
+      }
+    }
+    const Token *name_tok = peek(p); // identifier name
+    if (name_tok->type != TOK_IDENT) {
+      parse_error(p, "expected variable name");
+    }
+    advance(p);
+
+    // Fixed-size array declaration: int name[5]; or int name[5] = [1, 2, 3];
+    if (check_op(p, "[")) {
+      advance(p);
+      ASTNode *size_expr = parse_expr(p);
+      expect_op(p, "]");
+      ASTNode *init_val = NULL;
+      if (match_op(p, "=")) {
+        init_val = parse_expr(p);
+      }
+      match_op(p, ";");
+      ASTNode *new_node = ast_new_expr(p->arena, NULL, type_tok->sval, size_expr, init_val, t->line);
+      return ast_decl(p->arena, name_tok->sval, new_node, t->line);
+    }
+
+    ASTNode *val = NULL;
+    if (match_op(p, "=")) {
+      val = parse_expr(p);
+    }
     match_op(p, ";");
     return ast_decl(p->arena, name_tok->sval, val, t->line);
   }
@@ -345,9 +521,12 @@ static ASTNode *parse_statement(Parser *p) {
     return ast_block(p->arena, outer_stmts, 2, t->line);
   }
 
-  // Return
+  // Return: return expr; or return;
   if (match_ident(p, "return")) {
-    ASTNode *expr = parse_expr(p);
+    ASTNode *expr = NULL;
+    if (!check_op(p, ";")) {
+      expr = parse_expr(p);
+    }
     match_op(p, ";");
     return ast_return(p->arena, expr, t->line);
   }
@@ -364,7 +543,7 @@ static ASTNode *parse_statement(Parser *p) {
     return ast_continue(p->arena, t->line);
   }
 
-  // Assignment: ident = expr;
+  // Check for assignment: ident = expr; or ident[idx] = expr;
   if (t->type == TOK_IDENT && p->pos + 1 < p->tl->count) {
     const Token *next = &p->tl->tokens[p->pos + 1];
     if (next->type == TOK_OP && strcmp(next->sval, "=") == 0) {
@@ -373,6 +552,26 @@ static ASTNode *parse_statement(Parser *p) {
       ASTNode *val = parse_expr(p);
       match_op(p, ";");
       return ast_assign(p->arena, name_tok->sval, val, t->line);
+    }
+    if (next->type == TOK_OP && strcmp(next->sval, "[") == 0) {
+      int start_pos = p->pos;
+      const Token *name_tok = advance(p);
+      ASTNode *target = ast_ident(p->arena, name_tok->sval, name_tok->line);
+      while (match_op(p, "[")) {
+        ASTNode *idx = parse_expr(p);
+        expect_op(p, "]");
+        if (check_op(p, "[")) {
+          target = ast_index(p->arena, target, idx, name_tok->line);
+        } else if (match_op(p, "=")) {
+          ASTNode *val = parse_expr(p);
+          match_op(p, ";");
+          return ast_index_assign(p->arena, target, idx, val, t->line);
+        } else {
+          break;
+        }
+      }
+      // Backtrack and fall through to expression statement
+      p->pos = start_pos;
     }
   }
 

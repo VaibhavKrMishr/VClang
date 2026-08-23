@@ -9,20 +9,44 @@ typedef enum {
     VAL_INT,
     VAL_FLOAT,
     VAL_STR,
+    VAL_ARRAY,
+    VAL_FUNC,
+    VAL_RETURN,
     VAL_ERR,
     VAL_BREAK,
-    VAL_CONTINUE
+    VAL_CONTINUE,
+    VAL_ARENA
 } ValueType;
+
+typedef struct ArrayBuffer {
+    struct Value *items;
+    int count;
+    int cap;
+    int refcount;
+} ArrayBuffer;
 
 struct Value {
     ValueType type;
     int line;
 
     union {
-        long   num;
-        double dec;
-        char  *str;
-        char  *err;
+        long         num;
+        double       dec;
+        char        *str;
+        char        *err;
+        Arena       *arena;
+        ArrayBuffer *arr;
+
+        struct {
+            char *name;
+            char **params;
+            int param_count;
+            const ASTNode *body;
+        } func;
+
+        struct {
+            struct Value *val;
+        } ret;
     };
 };
 

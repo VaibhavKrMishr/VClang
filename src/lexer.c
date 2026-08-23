@@ -109,7 +109,7 @@ static void read_op(const char *s, int *i, TokenList *tl, int line) {
   char c = s[*i];
 
   // Single-char punctuation (never part of multi-char ops)
-  if (strchr("(){};,", c)) {
+  if (strchr("(){}[];,", c)) {
     char *lex = (char *)malloc(2);
     lex[0] = c;
     lex[1] = '\0';
@@ -203,7 +203,7 @@ TokenList tokenize(const char *s) {
     }
 
     // Operators / punctuation
-    if (strchr("(){};,+-*/%=<>!&|", s[i])) {
+    if (strchr("(){}[];,+-*/%=<>!&|", s[i])) {
       read_op(s, &i, &tl, line_num);
       continue;
     }

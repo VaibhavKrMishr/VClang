@@ -1,0 +1,57 @@
+println("=== 1. Basic Functions ===");
+func add(int a, int b) {
+    return a + b;
+}
+int res = add(10, 20);
+print("add(10, 20): "); println(res);
+
+func greet() {
+    println("Hello from greet()!");
+}
+greet();
+
+println("\n=== 2. Recursive Functions ===");
+func factorial(int n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+print("factorial(5): "); println(factorial(5));
+
+func fib(int n) {
+    if (n <= 0) { return 0; }
+    if (n == 1) { return 1; }
+    return fib(n - 1) + fib(n - 2);
+}
+print("fib(7): "); println(fib(7));
+
+println("\n=== 3. Function Composition & Early Return ===");
+func square(int x) {
+    return x * x;
+}
+func sum_of_squares(int a, int b) {
+    return square(a) + square(b);
+}
+print("sum_of_squares(3, 4): "); println(sum_of_squares(3, 4));
+
+func check_even(int x) {
+    if (x % 2 == 0) {
+        return "even";
+    }
+    return "odd";
+}
+print("check_even(4): "); println(check_even(4));
+print("check_even(7): "); println(check_even(7));
+
+println("\n=== 4. Scope Isolation ===");
+int x = 100;
+func modify_scope(int x) {
+    x = x + 50;
+    print("Inside func x: "); println(x);
+    return x;
+}
+modify_scope(10);
+print("Outside func x: "); println(x);
+
+println("\n=== All Function Tests Passed ===");

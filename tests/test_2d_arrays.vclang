@@ -1,0 +1,51 @@
+println("=== 1. 2D Array Literals & Types ===");
+int[][] matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+print("matrix: "); println(matrix);
+print("rows: "); println(len(matrix));
+print("cols in row 0: "); println(len(matrix[0]));
+
+println("\n=== 2. 2D Indexing & In-Place Mutation ===");
+print("matrix[0][0]: "); println(matrix[0][0]);
+print("matrix[1][2]: "); println(matrix[1][2]);
+
+matrix[1][1] = 99;
+matrix[0][2] = 77;
+print("matrix after mutations: "); println(matrix);
+
+println("\n=== 3. Matrix Traversal & Sum ===");
+int total_sum = 0;
+for (int r = 0; r < len(matrix); r = r + 1) {
+    for (int c = 0; c < len(matrix[r]); c = c + 1) {
+        total_sum = total_sum + matrix[r][c];
+    }
+}
+print("Sum of all 2D elements: "); println(total_sum);
+
+println("\n=== 4. Dynamic 2D Array Creation ===");
+func make_identity_matrix(int size) {
+    int[][] id = new int[size];
+    for (int i = 0; i < size; i = i + 1) {
+        int[] row = new int[size];
+        row[i] = 1;
+        id[i] = row;
+    }
+    return id;
+}
+
+int[][] eye = make_identity_matrix(3);
+print("3x3 Identity Matrix: "); println(eye);
+
+println("\n=== 5. 3D Array Testing ===");
+int[][][] cube = [
+    [[1, 2], [3, 4]],
+    [[5, 6], [7, 8]]
+];
+print("cube[1][0][1]: "); println(cube[1][0][1]);
+cube[1][0][1] = 999;
+print("cube after 3D mutation: "); println(cube);
+
+println("\n=== All 2D & Multi-Dimensional Array Tests Passed ===");
