@@ -11,9 +11,10 @@
 6. [Expressions & Operators](#6-expressions--operators)
 7. [Statements & Control Flow](#7-statements--control-flow)
 8. [Functions & Lexical Scoping](#8-functions--lexical-scoping)
-9. [Built-in Functions Reference](#9-built-in-functions-reference)
-10. [Algorithm & Systems Cookbook](#10-algorithm--systems-cookbook)
-11. [Runtime Architecture & Performance](#11-runtime-architecture--performance)
+9. [Structs & Object Model](#9-structs--object-model)
+10. [Built-in Functions Reference](#10-built-in-functions-reference)
+11. [Algorithm & Systems Cookbook](#11-algorithm--systems-cookbook)
+12. [Runtime Architecture & Performance](#12-runtime-architecture--performance)
 
 ---
 
@@ -21,9 +22,10 @@
 
 **VClang** is a high-performance, lightweight systems language designed with three pillars:
 
-* **Simplicity:** Familiar C-family syntax without legacy baggage (no header files, no pointer decay bugs, clean arrays).
-* **Modern Safety (RAII):** Automatic scoped resource cleanup. Dynamically allocated memory (arrays, strings, environments) is freed the instant a variable leaves its `{ ... }` scope without requiring a background Garbage Collector (GC).
+* **Simplicity & Predictability:** "No headache" design philosophy — every construct is explicit, with no hidden control flow, no hidden dynamic dispatch, and no hidden heap allocations.
+* **Modern Safety (RAII):** Automatic scoped resource cleanup. Dynamically allocated memory (arrays, strings, environments, structs) is freed the instant a variable leaves its `{ ... }` scope without requiring a background Garbage Collector (GC).
 * **Low-Level Control:** First-class Arena allocators allowing users to group memory allocations into custom memory pools with $O(1)$ batch resets.
+* **Flat Object Model:** Struct-based only with true pass-by-value semantics, Zig-style inline methods, composition-only code reuse, and zero `is-a` substitutability.
 
 ---
 
@@ -86,6 +88,7 @@ VClang supports strong typing with explicit type specifiers or `var`/`let` type 
 | Type | Description | Example |
 | :--- | :--- | :--- |
 | **`T[]` / `array`** | Reference-counted dynamic array of type `T` | `int[] nums = [1, 2, 3];` |
+| **`struct Name`** | User-defined flat data record with inline methods | `struct Vector2 { float x; float y; }` |
 | **`Arena`** | Reference to a custom Arena memory allocator | `Arena pool = new_arena(4096);` |
 
 ---
@@ -113,7 +116,7 @@ stack_buf[0] = 100;
 ```
 
 ### 2. Scoped Heap Allocation (Default RAII)
-Dynamic arrays allocate an `ArrayBuffer` on the heap with reference-counting. When all references leave scope, memory is freed immediately:
+Dynamic arrays and heap instances allocate on the heap with reference-counting. When all references leave scope, memory is freed immediately:
 ```c
 {
     int[] nums = [10, 20, 30];
@@ -139,12 +142,12 @@ reset_arena(arena);
 
 ## 6. Expressions & Operators
 
-### Arithmetic Operators
-* `+` : Addition / String Concatenation
-* `-` : Subtraction
-* `*` : Multiplication
-* `/` : Division (integer or floating-point)
-* `%` : Modulo (integers)
+### Arithmetic & Assignment Operators
+* `+`, `-`, `*`, `/`, `%` : Standard binary arithmetic
+* `+=`, `-=`, `*=`, `/=` : Compound in-place assignment operators
+* `++`, `--` : Unary increment / decrement
+* `-` (unary) : Unary numeric negation
+* `!` (unary) : Logical NOT
 
 ### Comparison & Relational Operators
 * `==` : Equality
@@ -157,7 +160,6 @@ reset_arena(arena);
 ### Logical Operators
 * `&&` : Logical AND (Short-circuiting)
 * `||` : Logical OR (Short-circuiting)
-* `!`  : Logical NOT (Unary prefix)
 
 ---
 
@@ -228,7 +230,129 @@ func array_sum(int[] arr) {
 
 ---
 
-## 9. Built-in Functions Reference
+## 9. Structs & Object Model
+
+VClang implements a modern, explicit, and minimal object model designed specifically for predictable performance and zero mental overhead.
+
+### Design Invariants
+1. **Struct-Based Only:** No classes, no inheritance, no virtual methods, no `static` keywords.
+2. **Zig-style Inline Methods:** Methods are declared directly inside the struct body and desugar to static calls with an explicit `self` receiver. Zero vtable indirection.
+3. **Static / Factory Associated Functions:** Functions inside a struct without a `self` parameter act as static constructors (e.g. `Vector2.zero()`).
+4. **Composition Only:** Code reuse is achieved strictly by embedding named struct fields. There is **no implicit field promotion** (unlike Go) — all accesses must use explicit paths (`car.engine.hp`, never `car.hp`).
+5. **Zero `is-a` Substitutability:** Parameter type checking is strict. A struct holding an `Engine` cannot be passed where an `Engine` is expected; only the inner field `car.engine` can be passed.
+6. **True Pass-by-Value Semantics:** Struct assignment (`b = a;`) and argument passing create completely independent copies. Mutating `b` never mutates `a`.
+7. **In-Place L-Value Mutations:** Chained field assignments (`car.engine.hp = 620;`, `car.pos.x += 10.0;`, `car.engine.cylinders++;`) mutate memory directly in-place without copy-on-read temporaries.
+
+### 1. Struct Declaration & Inline Methods
+```c
+struct Vector2 {
+    float x;
+    float y;
+
+    // Static Factory Constructor
+    func zero() {
+        return Vector2 { x: 0.0, y: 0.0 };
+    }
+
+    func new_vec(float x, float y) {
+        return Vector2 { x: x, y: y };
+    }
+
+    // Instance Method (Explicit 'self' receiver)
+    func length_sq(Vector2 self) {
+        return self.x * self.x + self.y * self.y;
+    }
+
+    func add(Vector2 self, Vector2 other) {
+        return Vector2 { x: self.x + other.x, y: self.y + other.y };
+    }
+
+    func scale(Vector2 self, float factor) {
+        return Vector2 { x: self.x * factor, y: self.y * factor };
+    }
+}
+```
+
+### 2. Instantiation Models
+```c
+// A. Typed Zero-Initialization
+Vector2 v_zero; // Initialized to { x: 0, y: 0 }
+
+// B. Explicit Literal Initializer
+Vector2 v1 = Vector2 { x: 3.0, y: 4.0 };
+
+// C. Static Factory Function
+Vector2 v2 = Vector2.zero();
+
+// D. Custom Arena Allocation
+Arena game_arena = new_arena(4096);
+Vector2 v_arena = new(game_arena) Vector2 { x: 10.0, y: 20.0 };
+```
+
+### 3. Calling Methods
+```c
+Vector2 v = Vector2 { x: 3.0, y: 4.0 };
+
+// Method call syntax desugars to Vector2.length_sq(v)
+float len_sq = v.length_sq(); // 25.0
+
+Vector2 scaled = v.scale(2.0); // { x: 6, y: 8 }
+```
+
+### 4. Composition & Explicit Field Paths
+```c
+struct Engine {
+    int hp;
+    int cylinders;
+}
+
+struct Car {
+    string model;
+    Engine engine;
+    Vector2 pos;
+}
+
+Car my_car = Car {
+    model: "V-GT Turbo",
+    engine: Engine { hp: 550, cylinders: 8 },
+    pos: Vector2 { x: 10.0, y: 20.0 }
+};
+
+// Access must use explicit path:
+println("HP:", my_car.engine.hp); // 550
+println("X:",  my_car.pos.x);     // 10.0
+
+// In-place deep mutation:
+my_car.engine.hp = 620;
+my_car.pos.x += 50.0;
+my_car.engine.cylinders++;
+```
+
+### 5. Arrays of Structs & Structs Containing Arrays
+```c
+// Array of structs
+array fleet = [
+    Car { model: "Alpha", engine: Engine { hp: 300, cylinders: 4 }, pos: Vector2 { x: 0, y: 0 } },
+    Car { model: "Beta",  engine: Engine { hp: 450, cylinders: 6 }, pos: Vector2 { x: 10, y: 20 } }
+];
+
+fleet[0].engine.hp += 50;
+println("Fleet 0 HP:", fleet[0].engine.hp); // 350
+
+// Struct holding an array
+struct Polygon {
+    string name;
+    array vertices;
+
+    func vertex_count(Polygon self) {
+        return len(self.vertices);
+    }
+}
+```
+
+---
+
+## 10. Built-in Functions Reference
 
 ### Console I/O
 * **`print(arg1, arg2, ...)`**: Prints arguments separated by spaces without a trailing newline.
@@ -236,23 +360,24 @@ func array_sum(int[] arr) {
 * **`input(prompt)`**: Prints prompt to stdout and reads a line from stdin as a `string`.
 
 ### Array & Collection Operations
-* **`len(collection)`**: Returns the integer length of an array or string.
+* **`len(collection)`**: Returns the integer length of an array, string, or collection.
 * **`push(array, element)`**: Appends an element to a dynamic array in-place.
 
 ### Memory & Arena Management
 * **`new_arena(capacity)` / `Arena(capacity)`**: Creates a memory arena with the given initial byte capacity (default: 4096).
 * **`reset_arena(arena)`**: Wipes all allocations in the arena for instant reuse ($O(1)$).
-* **`arena_used(arena)`**: Returns the current byte usage of an arena.
+* **`arena_used(arena)`**: Returns the current byte usage of an arena in bytes.
 
-### Type Conversions & Casting
+### Type Reflection & Conversions
+* **`typeof(val)`**: Returns the type name as a string (e.g., `"int"`, `"float"`, `"string"`, `"array"`, `"Arena"`, or the user struct name `"Vector2"`, `"type"`).
 * **`int(val)`**: Converts a float, numeric string, or single ASCII char to `int`.
 * **`float(val)`**: Converts an integer or string to `float`.
-* **`string(val)`**: Converts an integer or float to its formatted `string` representation.
+* **`string(val)`**: Converts an integer, float, or value to its formatted `string` representation.
 * **`char(ascii_code)`**: Converts an integer ASCII value to a 1-character `string`.
 
 ---
 
-## 10. Algorithm & Systems Cookbook
+## 11. Algorithm & Systems Cookbook
 
 ### Recursive In-Place QuickSort
 ```c
@@ -309,15 +434,15 @@ func find_primes(int limit) {
 
 ---
 
-## 11. Runtime Architecture & Performance
+## 12. Runtime Architecture & Performance
 
 ### Compiler & AST Design
-1. **Tokenizer (`src/lexer.c`):** Single-pass zero-copy lexer with lookahead for two-char operators and string escape resolution.
+1. **Tokenizer (`src/lexer.c`):** Single-pass zero-copy lexer with lookahead for two-char operators (`==`, `!=`, `<=`, `>=`, `&&`, `||`, `+=`, `-=`, `++`, `--`, `*=`, `/=`) and string escape resolution.
 2. **Parser (`src/parser.c`):** Recursive descent precedence-climbing parser constructing AST nodes inside a fast internal Arena allocator.
-3. **Evaluator (`src/interpreter.c`):** Tree-walking interpreter using environment pooling (`Env` freelist) and reference-counted `ArrayBuffer` handles to guarantee zero runtime allocation bottlenecks.
+3. **Evaluator (`src/interpreter.c`):** Tree-walking interpreter using environment pooling (`Env` freelist), flat 16-byte `Value` representation respecting System V ABI register returns, and reference-counted handles.
 
 ### Benchmark Statistics
 On standard x86_64 Linux systems:
 * **Interpreter Cold Startup:** `< 0.05 ms`
-* **Test Suite (10 suites, 100+ assertions):** `< 3.0 ms total`
+* **Test Suite (14 suites, 100+ assertions):** `< 3.0 ms total`
 * **Memory Footprint:** `< 2.0 MB RSS`

@@ -26,7 +26,12 @@ typedef enum {
     AST_ARRAY_LIT,
     AST_INDEX,
     AST_INDEX_ASSIGN,
-    AST_NEW
+    AST_NEW,
+    AST_STRUCT_DEF,
+    AST_STRUCT_LIT,
+    AST_MEMBER_ACCESS,
+    AST_MEMBER_ASSIGN,
+    AST_METHOD_CALL
 } ASTNodeType;
 
 typedef struct ASTNode ASTNode;
@@ -69,6 +74,7 @@ struct ASTNode {
 
         struct {
             const char *name;
+            const char **param_types;
             const char **params;
             int param_count;
             const ASTNode *body;
@@ -96,6 +102,41 @@ struct ASTNode {
             const ASTNode *size_expr;
             const ASTNode *init_expr;
         } new_expr;
+
+        struct {
+            const char *name;
+            const char **field_types;
+            const char **field_names;
+            int field_count;
+            const ASTNode **methods;
+            int method_count;
+        } struct_def;
+
+        struct {
+            const char *type_name;
+            const char **field_names;
+            const ASTNode **field_values;
+            int field_count;
+        } struct_lit;
+
+        struct {
+            const ASTNode *target;
+            const char *member;
+        } member_access;
+
+        struct {
+            const ASTNode *target;
+            const char *member;
+            OpType op;
+            const ASTNode *value;
+        } member_assign;
+
+        struct {
+            const ASTNode *target;
+            const char *method_name;
+            const ASTNode **args;
+            int arg_count;
+        } method_call;
     };
 };
 
@@ -125,7 +166,7 @@ ASTNode *ast_return(Arena *a, const ASTNode *expr, int line);
 ASTNode *ast_break(Arena *a, int line);
 ASTNode *ast_continue(Arena *a, int line);
 ASTNode *ast_func_def(Arena *a, const char *name,
-                      const char **params, int param_count,
+                      const char **param_types, const char **params, int param_count,
                       const ASTNode *body, int line);
 ASTNode *ast_array_lit(Arena *a, const ASTNode **elements, int count, int line);
 ASTNode *ast_index(Arena *a, const ASTNode *target, const ASTNode *index, int line);
@@ -133,5 +174,15 @@ ASTNode *ast_index_assign(Arena *a, const ASTNode *target, const ASTNode *index,
                           const ASTNode *value, int line);
 ASTNode *ast_new_expr(Arena *a, const ASTNode *allocator, const char *type_name,
                       const ASTNode *size_expr, const ASTNode *init_expr, int line);
+ASTNode *ast_struct_def(Arena *a, const char *name,
+                        const char **field_types, const char **field_names, int field_count,
+                        const ASTNode **methods, int method_count, int line);
+ASTNode *ast_struct_lit(Arena *a, const char *type_name,
+                        const char **field_names, const ASTNode **field_values, int field_count, int line);
+ASTNode *ast_member_access(Arena *a, const ASTNode *target, const char *member, int line);
+ASTNode *ast_member_assign(Arena *a, const ASTNode *target, const char *member,
+                           OpType op, const ASTNode *value, int line);
+ASTNode *ast_method_call(Arena *a, const ASTNode *target, const char *method_name,
+                         const ASTNode **args, int arg_count, int line);
 
 #endif // VCLANG_AST_H

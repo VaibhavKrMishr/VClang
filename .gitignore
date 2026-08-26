@@ -1,2 +1,3 @@
 upcoming_features/
 *.o
+tests/audit

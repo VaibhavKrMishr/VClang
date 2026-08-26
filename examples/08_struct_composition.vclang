@@ -1,0 +1,71 @@
+// ============================================================
+// 08_struct_composition.vclang
+// Demonstrating Struct Composition, Explicit Paths, and In-Place Mutations
+// ============================================================
+
+struct Specs {
+    int horsepower;
+    int torque;
+    float zero_to_sixty;
+}
+
+struct Engine {
+    string engine_type;
+    int cylinders;
+    Specs specs;
+
+    func get_power(Engine self) {
+        return self.specs.horsepower;
+    }
+}
+
+struct Car {
+    string brand;
+    string model;
+    Engine engine;
+
+    func describe(Car self) {
+        println(self.brand + " " + self.model + " [" + self.engine.engine_type + " V" + string(self.engine.cylinders) + "]");
+    }
+}
+
+println("=== VClang Struct Composition ===");
+
+Car race_car = Car {
+    brand: "Apex",
+    model: "GT-900",
+    engine: Engine {
+        engine_type: "Twin-Turbo",
+        cylinders: 8,
+        specs: Specs {
+            horsepower: 720,
+            torque: 850,
+            zero_to_sixty: 2.8
+        }
+    }
+};
+
+race_car.describe();
+
+// Explicit path access (No hidden promotion)
+println("Horsepower:", race_car.engine.specs.horsepower);
+println("Torque:", race_car.engine.specs.torque);
+
+// In-place nested L-value mutations
+println("\n--- Upgrading Engine (In-Place L-Value Mutation) ---");
+race_car.engine.specs.horsepower += 80;
+race_car.engine.specs.torque += 50;
+race_car.engine.specs.zero_to_sixty -= 0.2;
+
+println("New Horsepower:", race_car.engine.specs.horsepower);
+println("New Torque:", race_car.engine.specs.torque);
+println("New 0-60 Time:", race_car.engine.specs.zero_to_sixty);
+
+// Function with strict parameter types (Zero is-a substitutability)
+func dyno_test(Specs s) {
+    println("Dyno Test Rating:", s.horsepower * 2 + s.torque);
+    return s.horsepower;
+}
+
+// Pass exact field (passing race_car directly would be rejected by type checker)
+dyno_test(race_car.engine.specs);

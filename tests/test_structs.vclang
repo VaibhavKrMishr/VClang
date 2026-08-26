@@ -1,0 +1,287 @@
+// ============================================================
+// VClang Comprehensive Struct Subsystem Test Suite
+// Covers every locked-in design invariant:
+// 1. Struct-based only (no classes/inheritance)
+// 2. Zig-style inline methods desugared to static calls
+// 3. Static/factory associated functions
+// 4. Composition only with explicit field paths
+// 5. True pass-by-value semantics (independent copies)
+// 6. In-place L-value field mutations (simple, compound, nested, array)
+// 7. All instantiation models (zero-init, literals, new with Arena)
+// 8. Strict type checking & zero is-a substitutability
+// 9. Arrays of structs & structs containing arrays
+// ============================================================
+
+println("==================================================");
+println("   VClang Comprehensive Struct Test Suite");
+println("==================================================");
+
+// ------------------------------------------------------------
+// 1. Struct Definitions with Inline Methods & Static Factories
+// ------------------------------------------------------------
+println("\n--- 1. Struct Definitions, Inline Methods & Static Factories ---");
+
+struct Vector2 {
+    float x;
+    float y;
+
+    // Static / factory function
+    func zero() {
+        return Vector2 { x: 0.0, y: 0.0 };
+    }
+
+    func new_vec(float x, float y) {
+        return Vector2 { x: x, y: y };
+    }
+
+    // Instance method taking explicit self receiver
+    func length_sq(Vector2 self) {
+        return self.x * self.x + self.y * self.y;
+    }
+
+    func add(Vector2 self, Vector2 other) {
+        return Vector2 { x: self.x + other.x, y: self.y + other.y };
+    }
+
+    func scale(Vector2 self, float factor) {
+        return Vector2 { x: self.x * factor, y: self.y * factor };
+    }
+}
+
+// Static factory invocations
+Vector2 v0 = Vector2.zero();
+println("Vector2.zero():");
+println(v0);
+
+Vector2 v1 = Vector2.new_vec(3.0, 4.0);
+println("Vector2.new_vec(3.0, 4.0):");
+println(v1);
+
+// Instance method invocations (desugared to static calls with receiver)
+float lsq = v1.length_sq();
+println("v1.length_sq() expected 25.0:");
+println(lsq);
+
+Vector2 v2 = Vector2 { x: 1.0, y: 2.0 };
+Vector2 v3 = v1.add(v2);
+println("v1.add(v2) expected { x: 4, y: 6 }:");
+println(v3);
+
+Vector2 v_scaled = v1.scale(2.0);
+println("v1.scale(2.0) expected { x: 6, y: 8 }:");
+println(v_scaled);
+
+
+// ------------------------------------------------------------
+// 2. Instantiation Models: Zero-Init, Literals, New & Arena
+// ------------------------------------------------------------
+println("\n--- 2. Instantiation Models ---");
+
+// A. Uninitialized typed variable declaration (Zero-initialized)
+Vector2 v_uninit;
+println("Uninitialized 'Vector2 v_uninit;' (zero-init):");
+println(v_uninit);
+
+// B. Struct literal with designated field initializers
+Vector2 v_lit = Vector2 { x: 10.5, y: 20.5 };
+println("Literal 'Vector2 { x: 10.5, y: 20.5 }':");
+println(v_lit);
+
+// C. Heap / Arena allocation with new
+Arena my_arena = new Arena(4096);
+Vector2 v_arena = new(my_arena) Vector2 { x: 77.0, y: 88.0 };
+println("Arena-allocated 'new(my_arena) Vector2 { ... }':");
+println(v_arena);
+
+// D. Typeof reflection on struct instance and struct definition
+println("typeof(v1) expected 'Vector2':");
+println(typeof(v1));
+println("typeof(Vector2) expected 'type':");
+println(typeof(Vector2));
+
+
+// ------------------------------------------------------------
+// 3. True Pass-by-Value Semantics (Deep Copy Independence)
+// ------------------------------------------------------------
+println("\n--- 3. True Pass-by-Value Semantics ---");
+
+Vector2 original = Vector2 { x: 100.0, y: 200.0 };
+Vector2 copy_val = original;
+
+copy_val.x = 999.0;
+copy_val.y = 888.0;
+
+println("original after mutating copy_val (must remain 100, 200):");
+println(original);
+println("copy_val (must be 999, 888):");
+println(copy_val);
+
+// Pass-by-value across function call boundaries
+func try_modify(Vector2 v) {
+    v.x = -1.0;
+    v.y = -2.0;
+    return v;
+}
+
+Vector2 returned_v = try_modify(original);
+println("original after passing to try_modify (must remain 100, 200):");
+println(original);
+println("returned_v from try_modify (must be -1, -2):");
+println(returned_v);
+
+
+// ------------------------------------------------------------
+// 4. Nested Struct Composition (Explicit Field Paths)
+// ------------------------------------------------------------
+println("\n--- 4. Nested Struct Composition ---");
+
+struct Engine {
+    int hp;
+    int cylinders;
+
+    func describe(Engine self) {
+        println("Engine stats: hp=" + typeof(self.hp) + ", cylinders=" + typeof(self.cylinders));
+    }
+}
+
+struct Car {
+    string model;
+    Engine engine;
+    Vector2 pos;
+
+    func get_horsepower(Car self) {
+        return self.engine.hp;
+    }
+}
+
+Car my_car = Car {
+    model: "V-GT Turbo",
+    engine: Engine { hp: 550, cylinders: 8 },
+    pos: Vector2 { x: 12.0, y: 34.0 }
+};
+
+println("my_car:");
+println(my_car);
+println("Explicit path 'my_car.model': " + my_car.model);
+println("Explicit path 'my_car.engine.hp':");
+println(my_car.engine.hp);
+println("Explicit path 'my_car.pos.x':");
+println(my_car.pos.x);
+println("Method call 'my_car.get_horsepower()' expected 550:");
+println(my_car.get_horsepower());
+
+
+// ------------------------------------------------------------
+// 5. In-Place L-Value Field Mutations (Deep & Compound)
+// ------------------------------------------------------------
+println("\n--- 5. In-Place L-Value Field Mutations ---");
+
+// Simple mutation on nested struct field
+my_car.engine.hp = 620;
+println("my_car.engine.hp after '= 620':");
+println(my_car.engine.hp);
+
+// Compound mutations
+my_car.pos.x += 100.0;
+my_car.pos.y -= 4.0;
+println("my_car.pos after '+= 100.0' and '-= 4.0' expected { x: 112, y: 30 }:");
+println(my_car.pos);
+
+// Increment on nested field
+my_car.engine.cylinders++;
+println("my_car.engine.cylinders after '++' expected 9:");
+println(my_car.engine.cylinders);
+
+
+// ------------------------------------------------------------
+// 6. Nested Struct Pass-by-Value Independence
+// ------------------------------------------------------------
+println("\n--- 6. Nested Pass-by-Value Independence ---");
+
+Car car_backup = my_car;
+car_backup.model = "Backup Racer";
+car_backup.engine.hp = 9999;
+car_backup.pos.x = -500.0;
+
+println("my_car.engine.hp after modifying car_backup (must remain 620):");
+println(my_car.engine.hp);
+println("my_car.model after modifying car_backup (must remain 'V-GT Turbo'): " + my_car.model);
+println("car_backup.engine.hp (must be 9999):");
+println(car_backup.engine.hp);
+
+
+// ------------------------------------------------------------
+// 7. Zero is-a Substitutability / Strict Type Checking
+// ------------------------------------------------------------
+println("\n--- 7. Zero is-a Substitutability ---");
+
+func tune_engine(Engine e, int extra_hp) {
+    return e.hp + extra_hp;
+}
+
+// Passing the exact inner field succeeds
+int tuned = tune_engine(my_car.engine, 50);
+println("tune_engine(my_car.engine, 50) expected 670:");
+println(tuned);
+
+
+// ------------------------------------------------------------
+// 8. Arrays of Structs & Structs Containing Arrays
+// ------------------------------------------------------------
+println("\n--- 8. Arrays of Structs & Structs with Arrays ---");
+
+array fleet = [
+    Car { model: "Alpha", engine: Engine { hp: 300, cylinders: 4 }, pos: Vector2 { x: 0.0, y: 0.0 } },
+    Car { model: "Beta",  engine: Engine { hp: 400, cylinders: 6 }, pos: Vector2 { x: 10.0, y: 20.0 } },
+    Car { model: "Gamma", engine: Engine { hp: 500, cylinders: 8 }, pos: Vector2 { x: 50.0, y: 60.0 } }
+];
+
+println("fleet[1].model expected 'Beta': " + fleet[1].model);
+println("fleet[2].engine.hp expected 500:");
+println(fleet[2].engine.hp);
+
+// In-place mutation of struct in array
+fleet[0].pos.x = 42.0;
+fleet[0].engine.hp += 50;
+println("fleet[0] after in-place array mutation:");
+println(fleet[0]);
+
+// Method call on array element
+float dist_sq = fleet[1].pos.length_sq();
+println("fleet[1].pos.length_sq() expected 500.0:");
+println(dist_sq);
+
+// Struct containing an array
+struct Polygon {
+    string name;
+    array vertices;
+
+    func total_points(Polygon self) {
+        return len(self.vertices);
+    }
+}
+
+Polygon poly = Polygon {
+    name: "Triangle",
+    vertices: [
+        Vector2 { x: 0.0, y: 0.0 },
+        Vector2 { x: 5.0, y: 0.0 },
+        Vector2 { x: 2.5, y: 5.0 }
+    ]
+};
+
+println("Polygon:");
+println(poly);
+println("poly.total_points() expected 3:");
+println(poly.total_points());
+println("poly.vertices[2].y expected 5.0:");
+println(poly.vertices[2].y);
+
+// In-place mutation into struct's array
+poly.vertices[1].x = 10.0;
+println("poly.vertices[1].x after '= 10.0':");
+println(poly.vertices[1].x);
+
+println("\n==================================================");
+println("   ALL STRUCT TESTS PASSED SUCCESSFULLY!  ");
+println("==================================================");

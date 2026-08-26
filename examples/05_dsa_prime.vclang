@@ -1,31 +1,33 @@
-// 05_dsa_prime.vclang //
-// DSA: Check if a number is prime //
+// ============================================================
+// 05_dsa_prime.vclang
+// DSA: Prime Number Checker and Sieve of Eratosthenes
+// ============================================================
 
-println("--- 05 DSA: Prime Number Checker ---");
+println("--- 05 DSA: Prime Numbers ---");
 
-string inputStr = input("Enter a positive integer: ");
-int n = int(inputStr);
-
-if (n <= 1) {
-    println(n, "is NOT a prime number.");
-} else {
-    int isPrime = 1; // 1 for true, 0 for false
-    
-    // Check divisors up to n-1 (inefficient but works for demonstration)
-    for (int i = 2; i < n; i = i + 1) {
-        // We don't have modulo %, so we emulate it: n % i == n - (n/i)*i
-        int quotient = n / i;
-        int remainder = n - (quotient * i);
-        
-        if (remainder == 0) {
-            isPrime = 0;
-            break;
+func is_prime(int n) {
+    if (n <= 1) { return 0; }
+    for (int i = 2; i * i <= n; i = i + 1) {
+        if (n % i == 0) {
+            return 0;
         }
     }
-    
-    if (isPrime == 1) {
-        println(n, "is a prime number!");
-    } else {
-        println(n, "is NOT a prime number.");
-    }
+    return 1;
 }
+
+func find_primes_up_to(int limit) {
+    int[] primes = [];
+    for (int i = 2; i <= limit; i = i + 1) {
+        if (is_prime(i) == 1) {
+            push(primes, i);
+        }
+    }
+    return primes;
+}
+
+println("Is 29 prime?", is_prime(29) == 1);
+println("Is 42 prime?", is_prime(42) == 1);
+
+int[] primes_50 = find_primes_up_to(50);
+println("Primes up to 50 (" + string(len(primes_50)) + " found):");
+println(primes_50);

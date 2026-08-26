@@ -1,0 +1,17 @@
+// Test negative case 2: Rejection of is-a substitutability / subtyping
+struct Engine {
+    int hp;
+}
+
+struct Car {
+    string name;
+    Engine engine;
+}
+
+func tune(Engine e) {
+    return e.hp * 2;
+}
+
+Car c = Car { name: "Sport", engine: Engine { hp: 400 } };
+// Passing Car directly instead of c.engine must fail:
+tune(c);

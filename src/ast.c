@@ -181,7 +181,7 @@ ASTNode *ast_continue(Arena *a, int line) {
 }
 
 ASTNode *ast_func_def(Arena *a, const char *name,
-                      const char **params, int param_count,
+                      const char **param_types, const char **params, int param_count,
                       const ASTNode *body, int line) {
   ASTNode *n              = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
   n->type                 = AST_FUNC_DEF;
@@ -190,12 +190,16 @@ ASTNode *ast_func_def(Arena *a, const char *name,
   n->func_def.param_count = param_count;
   if (param_count > 0) {
     const char **p = (const char **)arena_alloc(a, sizeof(char *) * param_count);
+    const char **pt = (const char **)arena_alloc(a, sizeof(char *) * param_count);
     for (int i = 0; i < param_count; i++) {
       p[i] = arena_strdup(a, params[i]);
+      pt[i] = (param_types && param_types[i]) ? arena_strdup(a, param_types[i]) : NULL;
     }
     n->func_def.params = p;
+    n->func_def.param_types = pt;
   } else {
     n->func_def.params = NULL;
+    n->func_def.param_types = NULL;
   }
   n->func_def.body = body;
   return n;
@@ -246,6 +250,100 @@ ASTNode *ast_new_expr(Arena *a, const ASTNode *allocator, const char *type_name,
   n->new_expr.type_name = type_name ? arena_strdup(a, type_name) : NULL;
   n->new_expr.size_expr = size_expr;
   n->new_expr.init_expr = init_expr;
+  return n;
+}
+
+ASTNode *ast_struct_def(Arena *a, const char *name,
+                        const char **field_types, const char **field_names, int field_count,
+                        const ASTNode **methods, int method_count, int line) {
+  ASTNode *n                 = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                    = AST_STRUCT_DEF;
+  n->line                    = line;
+  n->struct_def.name         = arena_strdup(a, name);
+  n->struct_def.field_count  = field_count;
+  if (field_count > 0) {
+    const char **ftypes = (const char **)arena_alloc(a, sizeof(char *) * field_count);
+    const char **fnames = (const char **)arena_alloc(a, sizeof(char *) * field_count);
+    for (int i = 0; i < field_count; i++) {
+      ftypes[i] = arena_strdup(a, field_types[i]);
+      fnames[i] = arena_strdup(a, field_names[i]);
+    }
+    n->struct_def.field_types = ftypes;
+    n->struct_def.field_names = fnames;
+  } else {
+    n->struct_def.field_types = NULL;
+    n->struct_def.field_names = NULL;
+  }
+  n->struct_def.method_count = method_count;
+  if (method_count > 0) {
+    const ASTNode **m = (const ASTNode **)arena_alloc(a, sizeof(ASTNode *) * method_count);
+    memcpy(m, methods, sizeof(ASTNode *) * method_count);
+    n->struct_def.methods = m;
+  } else {
+    n->struct_def.methods = NULL;
+  }
+  return n;
+}
+
+ASTNode *ast_struct_lit(Arena *a, const char *type_name,
+                        const char **field_names, const ASTNode **field_values, int field_count, int line) {
+  ASTNode *n                 = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                    = AST_STRUCT_LIT;
+  n->line                    = line;
+  n->struct_lit.type_name    = arena_strdup(a, type_name);
+  n->struct_lit.field_count  = field_count;
+  if (field_count > 0) {
+    const char **fnames = (const char **)arena_alloc(a, sizeof(char *) * field_count);
+    const ASTNode **fvals = (const ASTNode **)arena_alloc(a, sizeof(ASTNode *) * field_count);
+    for (int i = 0; i < field_count; i++) {
+      fnames[i] = arena_strdup(a, field_names[i]);
+    }
+    memcpy(fvals, field_values, sizeof(ASTNode *) * field_count);
+    n->struct_lit.field_names = fnames;
+    n->struct_lit.field_values = fvals;
+  } else {
+    n->struct_lit.field_names = NULL;
+    n->struct_lit.field_values = NULL;
+  }
+  return n;
+}
+
+ASTNode *ast_member_access(Arena *a, const ASTNode *target, const char *member, int line) {
+  ASTNode *n                 = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                    = AST_MEMBER_ACCESS;
+  n->line                    = line;
+  n->member_access.target    = target;
+  n->member_access.member    = arena_strdup(a, member);
+  return n;
+}
+
+ASTNode *ast_member_assign(Arena *a, const ASTNode *target, const char *member,
+                           OpType op, const ASTNode *value, int line) {
+  ASTNode *n                 = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                    = AST_MEMBER_ASSIGN;
+  n->line                    = line;
+  n->member_assign.target    = target;
+  n->member_assign.member    = arena_strdup(a, member);
+  n->member_assign.op        = op;
+  n->member_assign.value     = value;
+  return n;
+}
+
+ASTNode *ast_method_call(Arena *a, const ASTNode *target, const char *method_name,
+                         const ASTNode **args, int arg_count, int line) {
+  ASTNode *n                 = (ASTNode *)arena_alloc(a, sizeof(ASTNode));
+  n->type                    = AST_METHOD_CALL;
+  n->line                    = line;
+  n->method_call.target      = target;
+  n->method_call.method_name = arena_strdup(a, method_name);
+  n->method_call.arg_count   = arg_count;
+  if (arg_count > 0) {
+    const ASTNode **a_args = (const ASTNode **)arena_alloc(a, sizeof(ASTNode *) * arg_count);
+    memcpy(a_args, args, sizeof(ASTNode *) * arg_count);
+    n->method_call.args = a_args;
+  } else {
+    n->method_call.args = NULL;
+  }
   return n;
 }
 

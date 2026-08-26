@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c99 -g -Iinclude
+CFLAGS  = -Wall -Wextra -std=c99 -O3 -Iinclude
 TARGET  = vclang
 
 # Source files for separate compilation (X-1 fix)

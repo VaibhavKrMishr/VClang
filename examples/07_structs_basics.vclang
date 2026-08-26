@@ -1,0 +1,68 @@
+// ============================================================
+// 07_structs_basics.vclang
+// Demonstrating VClang Structs, Inline Methods, and Pass-by-Value
+// ============================================================
+
+struct Vector2 {
+    float x;
+    float y;
+
+    // Static / Factory constructor
+    func zero() {
+        return Vector2 { x: 0.0, y: 0.0 };
+    }
+
+    func new_vec(float x, float y) {
+        return Vector2 { x: x, y: y };
+    }
+
+    // Instance method with explicit self receiver
+    func length_sq(Vector2 self) {
+        return self.x * self.x + self.y * self.y;
+    }
+
+    func add(Vector2 self, Vector2 other) {
+        return Vector2 { x: self.x + other.x, y: self.y + other.y };
+    }
+
+    func scale(Vector2 self, float factor) {
+        return Vector2 { x: self.x * factor, y: self.y * factor };
+    }
+}
+
+println("=== VClang Structs & Inline Methods ===");
+
+// 1. Static factory call
+Vector2 origin = Vector2.zero();
+println("Origin:", origin);
+
+// 2. Explicit struct literal
+Vector2 v1 = Vector2 { x: 3.0, y: 4.0 };
+Vector2 v2 = Vector2 { x: 1.0, y: 2.0 };
+
+println("Vector 1:", v1);
+println("Vector 2:", v2);
+
+// 3. Method calls (desugared to static calls with receiver)
+println("v1.length_sq():", v1.length_sq());
+
+Vector2 sum = v1.add(v2);
+println("v1 + v2 =", sum);
+
+Vector2 doubled = v1.scale(2.0);
+println("v1 * 2.0 =", doubled);
+
+// 4. True Pass-by-Value (Copy Independence)
+Vector2 v_copy = v1;
+v_copy.x = 999.0;
+v_copy.y = 888.0;
+
+println("\n--- Pass-by-Value Semantics ---");
+println("Original v1 (unchanged):", v1);
+println("Modified copy:", v_copy);
+
+// 5. Zero-initialization
+Vector2 v_zero;
+println("Default zero-initialized:", v_zero);
+println("typeof(v1):", typeof(v1));
+println("typeof(Vector2):", typeof(Vector2));

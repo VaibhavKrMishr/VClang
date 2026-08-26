@@ -1,0 +1,65 @@
+// ============================================================
+// 10_geometry_polygon.vclang
+// Structs holding Dynamic Arrays, Geometric Operations & Math
+// ============================================================
+
+struct Point {
+    float x;
+    float y;
+
+    func dist_sq(Point self, Point other) {
+        float dx = self.x - other.x;
+        float dy = self.y - other.y;
+        return dx * dx + dy * dy;
+    }
+}
+
+struct Polygon {
+    string name;
+    array vertices;
+
+    func vertex_count(Polygon self) {
+        return len(self.vertices);
+    }
+
+    func translate(Polygon self, float dx, float dy) {
+        for (int i = 0; i < len(self.vertices); i = i + 1) {
+            self.vertices[i].x += dx;
+            self.vertices[i].y += dy;
+        }
+        return self;
+    }
+}
+
+println("=== Computational Geometry: Polygon System ===");
+
+Polygon quad = Polygon {
+    name: "Rectangle",
+    vertices: [
+        Point { x: 0.0, y: 0.0 },
+        Point { x: 10.0, y: 0.0 },
+        Point { x: 10.0, y: 5.0 },
+        Point { x: 0.0, y: 5.0 }
+    ]
+};
+
+println("Polygon Name:", quad.name);
+println("Number of vertices:", quad.vertex_count());
+println("Initial Vertices:");
+for (int i = 0; i < quad.vertex_count(); i = i + 1) {
+    println("  Vertex", i, "=>", quad.vertices[i]);
+}
+
+// Side length squared calculation
+float side_a_sq = quad.vertices[0].dist_sq(quad.vertices[1]);
+float side_b_sq = quad.vertices[1].dist_sq(quad.vertices[2]);
+println("\nSide A Length Squared (Expected 100):", side_a_sq);
+println("Side B Length Squared (Expected 25):", side_b_sq);
+
+// Translate polygon
+println("\n--- Translating Polygon by (+5.0, +10.0) ---");
+quad.translate(5.0, 10.0);
+
+for (int i = 0; i < quad.vertex_count(); i = i + 1) {
+    println("  Vertex", i, "=>", quad.vertices[i]);
+}

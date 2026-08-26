@@ -20,6 +20,10 @@ typedef enum {
     OP_AND,     // &&
     OP_OR,      // ||
     OP_NOT,     // !
+    OP_ADD_ASSIGN, // +=
+    OP_SUB_ASSIGN, // -=
+    OP_INC,        // ++
+    OP_DEC,        // --
     OP_UNKNOWN
 } OpType;
 

@@ -1,0 +1,12 @@
+// Test negative case 1: Rejection of implicit Go-style field promotion (must use explicit path)
+struct Engine {
+    int hp;
+}
+
+struct Car {
+    string name;
+    Engine engine;
+}
+
+Car c = Car { name: "Sport", engine: Engine { hp: 400 } };
+println(c.hp); // Should error: Struct 'Car' has no field 'hp'

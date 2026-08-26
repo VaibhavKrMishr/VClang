@@ -1,19 +1,33 @@
-// 04_dsa_fibonacci.vclang //
-// DSA: Generate Fibonacci sequence up to N terms //
+// ============================================================
+// 04_dsa_fibonacci.vclang
+// DSA: Recursive and Iterative Fibonacci Computation
+// ============================================================
 
 println("--- 04 DSA: Fibonacci Sequence ---");
 
-string inputStr = input("How many terms do you want to generate? ");
-int terms = int(inputStr);
-
-int a = 0;
-int b = 1;
-
-println("Fibonacci Sequence:");
-for (int i = 0; i < terms; i = i + 1) {
-    print(a, " ");
-    int nextTerm = a + b;
-    a = b;
-    b = nextTerm;
+func fib_recursive(int n) {
+    if (n <= 0) { return 0; }
+    if (n == 1) { return 1; }
+    return fib_recursive(n - 1) + fib_recursive(n - 2);
 }
-println();
+
+func fib_iterative(int terms) {
+    int a = 0;
+    int b = 1;
+    print("Fibonacci (" + string(terms) + " terms): ");
+    for (int i = 0; i < terms; i = i + 1) {
+        print(a);
+        if (i < terms - 1) { print(", "); }
+        int next_term = a + b;
+        a = b;
+        b = next_term;
+    }
+    println();
+    return a;
+}
+
+// Compute sequence
+fib_iterative(10);
+
+println("fib_recursive(8) =", fib_recursive(8));
+println("fib_recursive(10) =", fib_recursive(10));

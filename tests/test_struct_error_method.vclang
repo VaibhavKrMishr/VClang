@@ -1,0 +1,8 @@
+// Test negative case 3: Calling undefined method
+struct Point {
+    float x;
+    float y;
+}
+
+Point p = Point { x: 1.0, y: 2.0 };
+p.fly();

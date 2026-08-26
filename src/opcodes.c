@@ -23,6 +23,10 @@ OpType op_from_string(const char *s) {
     if (s[0] == '>' && s[1] == '=') return OP_GE;
     if (s[0] == '&' && s[1] == '&') return OP_AND;
     if (s[0] == '|' && s[1] == '|') return OP_OR;
+    if (s[0] == '+' && s[1] == '=') return OP_ADD_ASSIGN;
+    if (s[0] == '-' && s[1] == '=') return OP_SUB_ASSIGN;
+    if (s[0] == '+' && s[1] == '+') return OP_INC;
+    if (s[0] == '-' && s[1] == '-') return OP_DEC;
 
     return OP_UNKNOWN;
 }
@@ -43,6 +47,10 @@ const char *op_to_string(OpType op) {
     case OP_AND: return "&&";
     case OP_OR:  return "||";
     case OP_NOT: return "!";
+    case OP_ADD_ASSIGN: return "+=";
+    case OP_SUB_ASSIGN: return "-=";
+    case OP_INC: return "++";
+    case OP_DEC: return "--";
     case OP_UNKNOWN: return "?";
     }
     return "?";

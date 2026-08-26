@@ -1,21 +1,27 @@
-// 06_dsa_gcd.vclang //
-// DSA: Euclidean Algorithm to find Greatest Common Divisor //
+// ============================================================
+// 06_dsa_gcd.vclang
+// DSA: Euclidean Algorithm for Greatest Common Divisor & LCM
+// ============================================================
 
-println("--- 06 DSA: Greatest Common Divisor (GCD) ---");
+println("--- 06 DSA: Greatest Common Divisor (GCD) & LCM ---");
 
-int a = int(input("Enter first integer (A): "));
-int b = int(input("Enter second integer (B): "));
-
-int originalA = a;
-int originalB = b;
-
-while (b != 0) {
-    // We emulate modulo: a % b == a - (a/b)*b
-    int quotient = a / b;
-    int remainder = a - (quotient * b);
-    
-    a = b;
-    b = remainder;
+func gcd(int a, int b) {
+    while (b != 0) {
+        int temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
 }
 
-println("The GCD of", originalA, "and", originalB, "is", a);
+func lcm(int a, int b) {
+    return (a * b) / gcd(a, b);
+}
+
+int x = 48;
+int y = 18;
+
+println("GCD(" + string(x) + ", " + string(y) + ") =", gcd(x, y));
+println("LCM(" + string(x) + ", " + string(y) + ") =", lcm(x, y));
+
+println("GCD(1071, 462) =", gcd(1071, 462));

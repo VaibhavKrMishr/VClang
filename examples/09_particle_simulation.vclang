@@ -1,0 +1,62 @@
+// ============================================================
+// 09_particle_simulation.vclang
+// Fast 2D Particle Simulation using Structs, Arrays, and Arenas
+// ============================================================
+
+struct Vec2 {
+    float x;
+    float y;
+
+    func add_in_place(Vec2 self, Vec2 delta) {
+        return Vec2 { x: self.x + delta.x, y: self.y + delta.y };
+    }
+}
+
+struct Particle {
+    int id;
+    Vec2 pos;
+    Vec2 vel;
+    float mass;
+
+    func update(Particle self, float dt) {
+        return Particle {
+            id: self.id,
+            pos: Vec2 { x: self.pos.x + self.vel.x * dt, y: self.pos.y + self.vel.y * dt },
+            vel: self.vel,
+            mass: self.mass
+        };
+    }
+}
+
+println("=== 2D Particle Physics Simulation ===");
+
+// Fast memory arena for simulation allocations
+Arena sim_arena = new_arena(8192);
+
+// Create an initial fleet of particles
+array particles = [
+    Particle { id: 1, pos: Vec2 { x: 0.0, y: 0.0 },   vel: Vec2 { x: 10.0, y: 5.0 },  mass: 1.0 },
+    Particle { id: 2, pos: Vec2 { x: 10.0, y: 20.0 }, vel: Vec2 { x: -2.0, y: 8.0 },  mass: 2.5 },
+    Particle { id: 3, pos: Vec2 { x: -5.0, y: 15.0 }, vel: Vec2 { x: 4.0, y: -3.0 }, mass: 0.5 }
+];
+
+println("Initial State:");
+for (int i = 0; i < len(particles); i = i + 1) {
+    println("  Particle", particles[i].id, "at", particles[i].pos);
+}
+
+// Run 3 physics steps with dt = 0.5
+float dt = 0.5;
+for (int step = 1; step <= 3; step = step + 1) {
+    println("\n--- Step " + string(step) + " ---");
+    for (int i = 0; i < len(particles); i = i + 1) {
+        // In-place direct simulation update
+        particles[i].pos.x += particles[i].vel.x * dt;
+        particles[i].pos.y += particles[i].vel.y * dt;
+        println("  Particle", particles[i].id, "=> pos:", particles[i].pos);
+    }
+}
+
+println("\nArena Used:", arena_used(sim_arena), "bytes");
+reset_arena(sim_arena);
+println("Simulation Complete.");

@@ -218,22 +218,191 @@ Value val_new_arena(size_t cap) {
   return v;
 }
 
-Value val_new_func(const char *name, const char **params, int param_count,
-                   const struct ASTNode *body) {
+// ============================================================
+// Module Arenas registry (to keep AST nodes alive for functions defined in loaded files)
+// ============================================================
+
+static Arena **module_arenas = NULL;
+static int module_arena_count = 0;
+static int module_arena_cap = 0;
+
+void vclang_register_module_arena(Arena *a) {
+  if (!a) return;
+  if (module_arena_count >= module_arena_cap) {
+    module_arena_cap = module_arena_cap == 0 ? 4 : module_arena_cap * 2;
+    module_arenas = (Arena **)realloc(module_arenas, sizeof(Arena *) * module_arena_cap);
+  }
+  module_arenas[module_arena_count++] = a;
+}
+
+void vclang_cleanup_module_arenas(void) {
+  for (int i = 0; i < module_arena_count; i++) {
+    arena_free(module_arenas[i]);
+  }
+  free(module_arenas);
+  module_arenas = NULL;
+  module_arena_count = 0;
+  module_arena_cap = 0;
+}
+
+// ============================================================
+// Struct Definition Registry
+// ============================================================
+
+static StructDef **struct_defs = NULL;
+static int struct_def_count = 0;
+static int struct_def_cap = 0;
+
+void struct_def_register(StructDef *def) {
+  if (!def) return;
+  for (int i = 0; i < struct_def_count; i++) {
+    if (strcmp(struct_defs[i]->name, def->name) == 0) {
+      struct_defs[i] = def;
+      return;
+    }
+  }
+  if (struct_def_count >= struct_def_cap) {
+    struct_def_cap = struct_def_cap == 0 ? 8 : struct_def_cap * 2;
+    struct_defs = (StructDef **)realloc(struct_defs, sizeof(StructDef *) * struct_def_cap);
+  }
+  struct_defs[struct_def_count++] = def;
+}
+
+const StructDef *struct_def_lookup(const char *name) {
+  if (!name) return NULL;
+  for (int i = 0; i < struct_def_count; i++) {
+    if (strcmp(struct_defs[i]->name, name) == 0) {
+      return struct_defs[i];
+    }
+  }
+  return NULL;
+}
+
+int struct_def_get_field_index(const StructDef *def, const char *fname) {
+  if (!def || !fname) return -1;
+  for (int i = 0; i < def->field_count; i++) {
+    if (strcmp(def->fields[i].name, fname) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void struct_def_cleanup_all(void) {
+  for (int i = 0; i < struct_def_count; i++) {
+    StructDef *def = struct_defs[i];
+    if (def) {
+      free(def->name);
+      if (def->fields) {
+        for (int j = 0; j < def->field_count; j++) {
+          free(def->fields[j].type_name);
+          free(def->fields[j].name);
+        }
+        free(def->fields);
+      }
+      if (def->methods) {
+        free(def->methods);
+      }
+      free(def);
+    }
+  }
+  free(struct_defs);
+  struct_defs = NULL;
+  struct_def_count = 0;
+  struct_def_cap = 0;
+}
+
+Value val_new_func(const char *name, const char **param_types, const char **params, int param_count,
+                   const struct ASTNode *body, struct Env *closure_env) {
+  (void)closure_env;
   Value v;
   v.type = VAL_FUNC;
   v.line = -1;
-  v.func.name = vclang_strdup(name);
-  v.func.param_count = param_count;
+  v.func = (Function *)malloc(sizeof(Function));
+  v.func->name = vclang_strdup(name);
+  v.func->param_count = param_count;
   if (param_count > 0) {
-    v.func.params = (char **)malloc(sizeof(char *) * param_count);
+    v.func->params = (char **)malloc(sizeof(char *) * param_count);
+    v.func->param_types = (char **)malloc(sizeof(char *) * param_count);
     for (int i = 0; i < param_count; i++) {
-      v.func.params[i] = vclang_strdup(params[i]);
+      v.func->params[i] = vclang_strdup(params[i]);
+      v.func->param_types[i] = (param_types && param_types[i]) ? vclang_strdup(param_types[i]) : NULL;
     }
   } else {
-    v.func.params = NULL;
+    v.func->params = NULL;
+    v.func->param_types = NULL;
   }
-  v.func.body = body;
+  v.func->body = body;
+  v.func->closure_env = NULL;
+  v.func->refcount = 1;
+  return v;
+}
+
+Value val_zero_for_type(const char *type_name) {
+  if (!type_name) return val_new_int(0);
+  if (strcmp(type_name, "int") == 0 || strcmp(type_name, "bool") == 0 ||
+      strcmp(type_name, "byte") == 0 || strcmp(type_name, "var") == 0 ||
+      strcmp(type_name, "let") == 0) {
+    return val_new_int(0);
+  }
+  if (strcmp(type_name, "float") == 0) {
+    return val_new_float(0.0);
+  }
+  if (strcmp(type_name, "string") == 0) {
+    return val_new_str("");
+  }
+  if (strcmp(type_name, "array") == 0 || strstr(type_name, "[]") != NULL) {
+    return val_new_array(0);
+  }
+  if (strcmp(type_name, "Arena") == 0 || strcmp(type_name, "arena") == 0) {
+    return val_new_arena(4096);
+  }
+  const StructDef *sdef = struct_def_lookup(type_name);
+  if (sdef) {
+    return val_new_struct(sdef, NULL);
+  }
+  return val_new_int(0);
+}
+
+Value val_new_struct(const StructDef *def, Arena *custom_arena) {
+  Value v;
+  v.type = VAL_STRUCT;
+  v.line = -1;
+  if (custom_arena) {
+    v.sinst = (StructInstance *)arena_alloc(custom_arena, sizeof(StructInstance));
+    v.sinst->def = def;
+    v.sinst->refcount = 1;
+    v.sinst->arena_owned = 1;
+    if (def && def->field_count > 0) {
+      v.sinst->fields = (Value *)arena_alloc(custom_arena, sizeof(Value) * def->field_count);
+      for (int i = 0; i < def->field_count; i++) {
+        v.sinst->fields[i] = val_zero_for_type(def->fields[i].type_name);
+      }
+    } else {
+      v.sinst->fields = NULL;
+    }
+  } else {
+    v.sinst = (StructInstance *)malloc(sizeof(StructInstance));
+    v.sinst->def = def;
+    v.sinst->refcount = 1;
+    v.sinst->arena_owned = 0;
+    if (def && def->field_count > 0) {
+      v.sinst->fields = (Value *)malloc(sizeof(Value) * def->field_count);
+      for (int i = 0; i < def->field_count; i++) {
+        v.sinst->fields[i] = val_zero_for_type(def->fields[i].type_name);
+      }
+    } else {
+      v.sinst->fields = NULL;
+    }
+  }
+  return v;
+}
+
+Value val_new_struct_def(const StructDef *def) {
+  Value v;
+  v.type = VAL_STRUCT_DEF;
+  v.line = -1;
+  v.sdef = def;
   return v;
 }
 
@@ -241,8 +410,8 @@ Value val_new_return(Value ret_v) {
   Value v;
   v.type = VAL_RETURN;
   v.line = -1;
-  v.ret.val = (Value *)malloc(sizeof(Value));
-  *v.ret.val = val_copy(ret_v);
+  v.ret = (Value *)malloc(sizeof(Value));
+  *v.ret = val_copy(ret_v);
   return v;
 }
 
@@ -250,7 +419,7 @@ Value val_new_err(const char *msg, int line) {
   Value v;
   v.type = VAL_ERR;
   v.line = line;
-  v.err  = vclang_strdup(msg);  // M-2 fix: OOM-safe instead of raw strdup
+  v.err  = vclang_strdup(msg);
   return v;
 }
 
@@ -271,7 +440,6 @@ Value val_new_continue(void) {
 }
 
 Value val_copy(Value v) {
-  // v is already a struct copy (passed by value).
   if (v.type == VAL_STR) {
     v.str = vclang_strdup(v.str);
   } else if (v.type == VAL_ERR) {
@@ -279,22 +447,28 @@ Value val_copy(Value v) {
   } else if (v.type == VAL_ARRAY) {
     if (v.arr) v.arr->refcount++;
   } else if (v.type == VAL_FUNC) {
-    v.func.name = vclang_strdup(v.func.name);
-    if (v.func.param_count > 0) {
-      char **new_params = (char **)malloc(sizeof(char *) * v.func.param_count);
-      for (int i = 0; i < v.func.param_count; i++) {
-        new_params[i] = vclang_strdup(v.func.params[i]);
-      }
-      v.func.params = new_params;
-    } else {
-      v.func.params = NULL;
-    }
+    if (v.func) v.func->refcount++;
   } else if (v.type == VAL_ARENA) {
     if (v.arena) v.arena->refcount++;
   } else if (v.type == VAL_RETURN) {
-    Value *r = (Value *)malloc(sizeof(Value));
-    *r = val_copy(*v.ret.val);
-    v.ret.val = r;
+    if (v.ret) {
+      Value *r = (Value *)malloc(sizeof(Value));
+      *r = val_copy(*v.ret);
+      v.ret = r;
+    }
+  } else if (v.type == VAL_STRUCT) {
+    if (v.sinst) {
+      // True pass-by-value semantics: perform independent copy
+      const StructDef *def = v.sinst->def;
+      Value copy = val_new_struct(def, NULL);
+      if (def && def->field_count > 0) {
+        for (int i = 0; i < def->field_count; i++) {
+          val_clear(&copy.sinst->fields[i]);
+          copy.sinst->fields[i] = val_copy(v.sinst->fields[i]);
+        }
+      }
+      return copy;
+    }
   }
   return v;
 }
@@ -304,9 +478,11 @@ void val_clear(Value *v) {
   if (v->type == VAL_INT || v->type == VAL_FLOAT || v->type == VAL_BREAK || v->type == VAL_CONTINUE)
     return;
   if (v->type == VAL_STR) {
-    free(v->str);
+    if (v->str) free(v->str);
+    v->str = NULL;
   } else if (v->type == VAL_ERR) {
-    free(v->err);
+    if (v->err) free(v->err);
+    v->err = NULL;
   } else if (v->type == VAL_ARENA) {
     if (v->arena) {
       v->arena->refcount--;
@@ -328,20 +504,50 @@ void val_clear(Value *v) {
       v->arr = NULL;
     }
   } else if (v->type == VAL_FUNC) {
-    if (v->func.name) free(v->func.name);
-    if (v->func.params) {
-      for (int i = 0; i < v->func.param_count; i++) {
-        free(v->func.params[i]);
+    if (v->func) {
+      v->func->refcount--;
+      if (v->func->refcount <= 0) {
+        if (v->func->name) free(v->func->name);
+        if (v->func->params) {
+          for (int i = 0; i < v->func->param_count; i++) {
+            free(v->func->params[i]);
+          }
+          free(v->func->params);
+        }
+        if (v->func->param_types) {
+          for (int i = 0; i < v->func->param_count; i++) {
+            if (v->func->param_types[i]) free(v->func->param_types[i]);
+          }
+          free(v->func->param_types);
+        }
+        free(v->func);
       }
-      free(v->func.params);
-      v->func.params = NULL;
+      v->func = NULL;
     }
   } else if (v->type == VAL_RETURN) {
-    if (v->ret.val) {
-      val_clear(v->ret.val);
-      free(v->ret.val);
-      v->ret.val = NULL;
+    if (v->ret) {
+      val_clear(v->ret);
+      free(v->ret);
+      v->ret = NULL;
     }
+  } else if (v->type == VAL_STRUCT) {
+    if (v->sinst) {
+      if (!v->sinst->arena_owned) {
+        v->sinst->refcount--;
+        if (v->sinst->refcount <= 0) {
+          if (v->sinst->fields && v->sinst->def) {
+            for (int i = 0; i < v->sinst->def->field_count; i++) {
+              val_clear(&v->sinst->fields[i]);
+            }
+            free(v->sinst->fields);
+          }
+          free(v->sinst);
+        }
+      }
+      v->sinst = NULL;
+    }
+  } else if (v->type == VAL_STRUCT_DEF) {
+    v->sdef = NULL;
   }
 }
 
@@ -351,7 +557,7 @@ void val_print(Value v) {
     printf("%li", v.num);
     break;
   case VAL_FLOAT:
-    printf("%lf", v.dec);
+    printf("%g", v.dec);
     break;
   case VAL_STR:
     printf("%s", v.str);
@@ -371,10 +577,12 @@ void val_print(Value v) {
     putchar(']');
     break;
   case VAL_FUNC:
-    printf("<function %s(", v.func.name ? v.func.name : "anonymous");
-    for (int i = 0; i < v.func.param_count; i++) {
-      printf("%s", v.func.params[i]);
-      if (i < v.func.param_count - 1) printf(", ");
+    printf("<function %s(", (v.func && v.func->name) ? v.func->name : "anonymous");
+    if (v.func && v.func->params) {
+      for (int i = 0; i < v.func->param_count; i++) {
+        printf("%s", v.func->params[i]);
+        if (i < v.func->param_count - 1) printf(", ");
+      }
     }
     printf(")>");
     break;
@@ -382,7 +590,27 @@ void val_print(Value v) {
     printf("<Arena used=%zu cap=%zu>", arena_used(v.arena), v.arena ? v.arena->cap : 0);
     break;
   case VAL_RETURN:
-    if (v.ret.val) val_print(*v.ret.val);
+    if (v.ret) val_print(*v.ret);
+    break;
+  case VAL_STRUCT:
+    if (v.sinst && v.sinst->def) {
+      printf("%s { ", v.sinst->def->name);
+      for (int i = 0; i < v.sinst->def->field_count; i++) {
+        printf("%s: ", v.sinst->def->fields[i].name);
+        if (v.sinst->fields[i].type == VAL_STR) {
+          printf("\"%s\"", v.sinst->fields[i].str);
+        } else {
+          val_print(v.sinst->fields[i]);
+        }
+        if (i < v.sinst->def->field_count - 1) printf(", ");
+      }
+      printf(" }");
+    } else {
+      printf("<struct null>");
+    }
+    break;
+  case VAL_STRUCT_DEF:
+    printf("<type %s>", (v.sdef && v.sdef->name) ? v.sdef->name : "struct");
     break;
   case VAL_ERR:
     if (v.line > 0)

@@ -48,13 +48,22 @@ Value  val_new_str(const char *s);
 Value  val_new_array(int cap);
 void   val_array_push(Value *arr, Value v);
 Value  val_new_arena(size_t cap);
-Value  val_new_func(const char *name, const char **params, int param_count, const struct ASTNode *body);
+struct Env;
+typedef struct StructDef StructDef;
+Value  val_new_func(const char *name, const char **param_types, const char **params, int param_count, const struct ASTNode *body, struct Env *closure_env);
+Value  val_new_struct(const StructDef *def, Arena *custom_arena);
+Value  val_new_struct_def(const StructDef *def);
+Value  val_zero_for_type(const char *type_name);
 Value  val_new_return(Value v);
 Value  val_new_err(const char *msg, int line);
 Value  val_new_break(void);
 Value  val_new_continue(void);
 Value  val_copy(Value v);
 void   val_clear(Value *v);
+
+// Module Arena Management
+void   vclang_register_module_arena(Arena *a);
+void   vclang_cleanup_module_arenas(void);
 
 // Printing
 void val_print(Value v);
