@@ -375,6 +375,13 @@ struct Polygon {
 * **`string(val)`**: Converts an integer, float, or value to its formatted `string` representation.
 * **`char(ascii_code)`**: Converts an integer ASCII value to a 1-character `string`.
 
+### File System & I/O
+* **`read_file(path)`**: Reads the entire file content into a `string`. Returns a runtime error if the file cannot be opened.
+* **`write_file(path, content)`**: Writes or overwrites a `string` to disk at `path`. Returns `1` on success.
+* **`append_file(path, content)`**: Appends a `string` to the end of the file at `path`. Returns `1` on success.
+* **`file_exists(path)`**: Returns `1` if the file exists on disk, `0` otherwise.
+* **`remove_file(path)`**: Deletes the file at `path`. Returns `1` if successfully removed, `0` otherwise.
+
 ---
 
 ## 11. Algorithm & Systems Cookbook

@@ -1,5 +1,6 @@
 #include "../include/interpreter.h"
 #include "../include/parser.h"
+#include <sys/stat.h>
 
 // ============================================================
 // Environment — Freelist pool to avoid malloc/free per loop iteration
@@ -314,6 +315,157 @@ static Value eval_builtin_call(Env *e, const char *fname,
     size_t used = arena_used(v.arena);
     val_clear(&v);
     return val_new_int((long)used);
+  }
+
+  // ============================================================
+  // File I/O Built-ins
+  // ============================================================
+
+  // file_exists(path)
+  if (strcmp(fname, "file_exists") == 0) {
+    if (argc != 1) return val_new_err("file_exists() takes 1 argument (path)", line);
+    Value p = eval(e, args[0]);
+    if (p.type == VAL_ERR) return p;
+    if (p.type != VAL_STR) {
+      val_clear(&p);
+      return val_new_err("file_exists() expects a string path", line);
+    }
+    struct stat st;
+    int exists = (stat(p.str, &st) == 0) ? 1 : 0;
+    val_clear(&p);
+    return val_new_int(exists);
+  }
+
+  // read_file(path)
+  if (strcmp(fname, "read_file") == 0) {
+    if (argc != 1) return val_new_err("read_file() takes 1 argument (path)", line);
+    Value p = eval(e, args[0]);
+    if (p.type == VAL_ERR) return p;
+    if (p.type != VAL_STR) {
+      val_clear(&p);
+      return val_new_err("read_file() expects a string path", line);
+    }
+    FILE *f = fopen(p.str, "rb");
+    if (!f) {
+      char err_msg[256];
+      snprintf(err_msg, sizeof(err_msg), "Could not open file '%s' for reading", p.str);
+      val_clear(&p);
+      return val_new_err(err_msg, line);
+    }
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (length < 0) {
+      fclose(f);
+      val_clear(&p);
+      return val_new_err("Failed to determine file size", line);
+    }
+    if (length == 0) {
+      fclose(f);
+      val_clear(&p);
+      return val_new_str("");
+    }
+    char *buf = (char *)malloc(length + 1);
+    if (!buf) {
+      fclose(f);
+      val_clear(&p);
+      return val_new_err("Out of memory reading file", line);
+    }
+    size_t bytes_read = fread(buf, 1, length, f);
+    buf[bytes_read] = '\0';
+    fclose(f);
+    val_clear(&p);
+    Value res = val_new_str(buf);
+    free(buf);
+    return res;
+  }
+
+  // write_file(path, content)
+  if (strcmp(fname, "write_file") == 0) {
+    if (argc != 2) return val_new_err("write_file() takes 2 arguments (path, content)", line);
+    Value p = eval(e, args[0]);
+    if (p.type == VAL_ERR) return p;
+    if (p.type != VAL_STR) {
+      val_clear(&p);
+      return val_new_err("write_file() expects a string path", line);
+    }
+    Value c = eval(e, args[1]);
+    if (c.type == VAL_ERR) {
+      val_clear(&p);
+      return c;
+    }
+    if (c.type != VAL_STR) {
+      val_clear(&p);
+      val_clear(&c);
+      return val_new_err("write_file() expects string content", line);
+    }
+    FILE *f = fopen(p.str, "wb");
+    if (!f) {
+      char err_msg[256];
+      snprintf(err_msg, sizeof(err_msg), "Could not open file '%s' for writing", p.str);
+      val_clear(&p);
+      val_clear(&c);
+      return val_new_err(err_msg, line);
+    }
+    size_t len = strlen(c.str);
+    if (len > 0) {
+      fwrite(c.str, 1, len, f);
+    }
+    fclose(f);
+    val_clear(&p);
+    val_clear(&c);
+    return val_new_int(1);
+  }
+
+  // append_file(path, content)
+  if (strcmp(fname, "append_file") == 0) {
+    if (argc != 2) return val_new_err("append_file() takes 2 arguments (path, content)", line);
+    Value p = eval(e, args[0]);
+    if (p.type == VAL_ERR) return p;
+    if (p.type != VAL_STR) {
+      val_clear(&p);
+      return val_new_err("append_file() expects a string path", line);
+    }
+    Value c = eval(e, args[1]);
+    if (c.type == VAL_ERR) {
+      val_clear(&p);
+      return c;
+    }
+    if (c.type != VAL_STR) {
+      val_clear(&p);
+      val_clear(&c);
+      return val_new_err("append_file() expects string content", line);
+    }
+    FILE *f = fopen(p.str, "ab");
+    if (!f) {
+      char err_msg[256];
+      snprintf(err_msg, sizeof(err_msg), "Could not open file '%s' for appending", p.str);
+      val_clear(&p);
+      val_clear(&c);
+      return val_new_err(err_msg, line);
+    }
+    size_t len = strlen(c.str);
+    if (len > 0) {
+      fwrite(c.str, 1, len, f);
+    }
+    fclose(f);
+    val_clear(&p);
+    val_clear(&c);
+    return val_new_int(1);
+  }
+
+  // remove_file(path)
+  if (strcmp(fname, "remove_file") == 0) {
+    if (argc != 1) return val_new_err("remove_file() takes 1 argument (path)", line);
+    Value p = eval(e, args[0]);
+    if (p.type == VAL_ERR) return p;
+    if (p.type != VAL_STR) {
+      val_clear(&p);
+      return val_new_err("remove_file() expects a string path", line);
+    }
+    int res = (remove(p.str) == 0) ? 1 : 0;
+    val_clear(&p);
+    return val_new_int(res);
   }
 
   return val_new_err("Function not defined", line);

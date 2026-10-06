@@ -1,0 +1,64 @@
+println("=== 1. Testing file_exists ===");
+string test_path = "tests/test_io_temp.txt";
+
+// Should not exist initially
+int exists_before = file_exists(test_path);
+print("file_exists before creation: "); println(exists_before);
+
+println("\n=== 2. Testing write_file ===");
+string initial_content = "Hello, VClang File I/O!\nSecond line of data.\n";
+int w_res = write_file(test_path, initial_content);
+print("write_file returned: "); println(w_res);
+
+// Should exist now
+int exists_after = file_exists(test_path);
+print("file_exists after creation: "); println(exists_after);
+
+println("\n=== 3. Testing read_file ===");
+string read_back = read_file(test_path);
+print("read_file content:\n");
+print(read_back);
+
+println("=== 4. Testing append_file ===");
+string extra_content = "Appended third line.\n";
+int a_res = append_file(test_path, extra_content);
+print("append_file returned: "); println(a_res);
+
+string read_after_append = read_file(test_path);
+print("read_file after append:\n");
+print(read_after_append);
+
+println("=== 5. Testing write_file overwrite ===");
+string overwritten_content = "Overwritten single line.\n";
+write_file(test_path, overwritten_content);
+string read_overwritten = read_file(test_path);
+print("read_file after overwrite:\n");
+print(read_overwritten);
+
+println("=== 6. Testing remove_file ===");
+int rm_res = remove_file(test_path);
+print("remove_file returned: "); println(rm_res);
+
+int exists_final = file_exists(test_path);
+print("file_exists after remove: "); println(exists_final);
+
+println("\n=== 7. File I/O inside Functions & Processing ===");
+func write_config(string path, string key, string val) {
+    string entry = key + "=" + val + "\n";
+    return write_file(path, entry);
+}
+
+func read_config_entry(string path) {
+    if (!file_exists(path)) {
+        return "NOT_FOUND";
+    }
+    return read_file(path);
+}
+
+string conf_path = "tests/test_temp_conf.ini";
+write_config(conf_path, "server_port", "8080");
+print("Config entry: ");
+print(read_config_entry(conf_path));
+remove_file(conf_path);
+
+println("=== All File I/O Tests Passed ===");

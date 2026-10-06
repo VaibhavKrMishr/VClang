@@ -1,0 +1,2 @@
+// Negative Test: Reading nonexistent file should yield runtime error
+string content = read_file("non_existent_file_12345_missing.txt");

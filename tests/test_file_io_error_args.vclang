@@ -1,0 +1,2 @@
+// Negative Test: write_file with invalid argument count
+write_file("only_one_argument.txt");
