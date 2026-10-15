@@ -30,4 +30,9 @@ clean:
 test: $(TARGET)
 	./tests/run_tests.sh
 
-.PHONY: all clean test
+test-sanitizer:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="-Wall -Wextra -std=c99 -fsanitize=address,undefined -fno-omit-frame-pointer -g -Iinclude"
+	./tests/run_tests.sh
+
+.PHONY: all clean test test-sanitizer

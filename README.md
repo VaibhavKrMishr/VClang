@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Build](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
+[![CI](https://github.com/VaibhavKrMishr/VClang/actions/workflows/ci.yml/badge.svg)](https://github.com/VaibhavKrMishr/VClang/actions/workflows/ci.yml)
 [![Execution Speed](https://img.shields.io/badge/Speed-Sub--millisecond-orange.svg)]()
 
 **VClang** is a lightweight, high-performance, C-family programming language designed from the ground up for simplicity, speed, and modern systems-level control. Built in standard C99 with **zero external dependencies**, VClang merges familiar C-like syntax with modern memory safety (RAII scoped auto-cleanup), explicit Zig-style memory allocators (`Arena`), and an explicit, predictable struct object model.

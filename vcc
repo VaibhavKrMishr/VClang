@@ -27,16 +27,18 @@ fi
 # A simple approach: create a shell script wrapper.
 
 # Ensure vclang exists
-INTERPRETER_PATH="$(dirname $(realpath $0))/vclang"
+INTERPRETER_PATH="$(dirname "$(realpath "$0")")/vclang"
 
 if [[ ! -f "$INTERPRETER_PATH" ]]; then
     echo "Error: vclang interpreter not found at $INTERPRETER_PATH"
     exit 1
 fi
 
+INPUT_REALPATH="$(realpath "$input_file")"
+
 cat > "$output_file" <<EOF
 #!/bin/bash
-"$INTERPRETER_PATH" "$PWD/$input_file"
+"$INTERPRETER_PATH" "$INPUT_REALPATH"
 EOF
 
 chmod +x "$output_file"

@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-binaries:
+    name: Package Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+          - os: macos-latest
+            target: macos-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build optimized binary
+        run: |
+          make clean
+          make CFLAGS="-Wall -Wextra -std=c99 -O3 -Iinclude"
+
+      - name: Strip binary
+        run: |
+          strip vclang || true
+
+      - name: Package release archive
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ -z "$VERSION" ] || [[ "$VERSION" == "main" ]] || [[ "$VERSION" == "master" ]]; then
+            VERSION="${{ inputs.tag_name }}"
+          fi
+          
+          PKG_NAME="vclang-${VERSION}-${{ matrix.target }}"
+          mkdir -p "$PKG_NAME"
+          
+          cp vclang vcc run README.md "$PKG_NAME/"
+          if [ -f LICENSE ]; then
+            cp LICENSE "$PKG_NAME/"
+          fi
+          cp -r examples "$PKG_NAME/"
+          
+          tar -czvf "${PKG_NAME}.tar.gz" "$PKG_NAME"
+          
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+          fi
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: vclang-*.tar.gz*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Display downloaded artifacts
+        run: |
+          ls -la dist/
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || inputs.tag_name }}
+          name: VClang ${{ github.ref_name || inputs.tag_name }}
+          files: dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true

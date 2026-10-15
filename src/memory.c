@@ -288,6 +288,24 @@ int struct_def_get_field_index(const StructDef *def, const char *fname) {
   return -1;
 }
 
+static void func_free_body(Function *fn) {
+  if (!fn) return;
+  if (fn->name) free(fn->name);
+  if (fn->params) {
+    for (int i = 0; i < fn->param_count; i++) {
+      if (fn->params[i]) free(fn->params[i]);
+    }
+    free(fn->params);
+  }
+  if (fn->param_types) {
+    for (int i = 0; i < fn->param_count; i++) {
+      if (fn->param_types[i]) free(fn->param_types[i]);
+    }
+    free(fn->param_types);
+  }
+  free(fn);
+}
+
 void struct_def_cleanup_all(void) {
   for (int i = 0; i < struct_def_count; i++) {
     StructDef *def = struct_defs[i];
@@ -301,6 +319,14 @@ void struct_def_cleanup_all(void) {
         free(def->fields);
       }
       if (def->methods) {
+        for (int j = 0; j < def->method_count; j++) {
+          if (def->methods[j]) {
+            def->methods[j]->refcount--;
+            if (def->methods[j]->refcount <= 0) {
+              func_free_body(def->methods[j]);
+            }
+          }
+        }
         free(def->methods);
       }
       free(def);
@@ -507,20 +533,7 @@ void val_clear(Value *v) {
     if (v->func) {
       v->func->refcount--;
       if (v->func->refcount <= 0) {
-        if (v->func->name) free(v->func->name);
-        if (v->func->params) {
-          for (int i = 0; i < v->func->param_count; i++) {
-            free(v->func->params[i]);
-          }
-          free(v->func->params);
-        }
-        if (v->func->param_types) {
-          for (int i = 0; i < v->func->param_count; i++) {
-            if (v->func->param_types[i]) free(v->func->param_types[i]);
-          }
-          free(v->func->param_types);
-        }
-        free(v->func);
+        func_free_body(v->func);
       }
       v->func = NULL;
     }

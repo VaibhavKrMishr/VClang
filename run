@@ -3,4 +3,5 @@ if [ -z "$1" ]; then
     echo "Usage: ./run <script.vclang>"
     exit 1
 fi
-./vclang "$1"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$DIR/vclang" "$@"

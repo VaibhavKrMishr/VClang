@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }} - ${{ matrix.cc }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        cc: [gcc, clang]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Display compiler version
+        run: |
+          echo "Operating System: ${{ matrix.os }}"
+          echo "Compiler: ${{ matrix.cc }}"
+          ${{ matrix.cc }} --version
+          make --version
+
+      - name: Build with -Werror
+        run: |
+          make clean
+          make CC=${{ matrix.cc }} CFLAGS="-Wall -Wextra -Werror -std=c99 -O3 -Iinclude"
+
+      - name: Run test suite
+        run: make test
+
+      - name: Test CLI compiler driver (vcc)
+        run: |
+          ./vcc examples/01_basics.vclang -o test_basics_bin
+          ./test_basics_bin
+          ./vcc examples/07_structs_basics.vclang -o test_structs_bin
+          ./test_structs_bin
+
+      - name: Test example scripts (run helper)
+        run: |
+          ./run examples/01_basics.vclang
+          ./run examples/02_control_flow.vclang
+          ./run examples/04_dsa_fibonacci.vclang
+          ./run examples/08_struct_composition.vclang
+
+      - name: Upload compiled binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vclang-${{ matrix.os }}-${{ matrix.cc }}
+          path: vclang
+          if-no-files-found: error
+
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and test with AddressSanitizer & UndefinedBehaviorSanitizer
+        run: |
+          make test-sanitizer CC=clang
+
+      - name: Run complex examples under Sanitizers
+        run: |
+          ./vclang examples/04_dsa_fibonacci.vclang
+          ./vclang examples/07_structs_basics.vclang
+          ./vclang examples/08_struct_composition.vclang
+
+  valgrind:
+    name: Valgrind Memory Safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build with debug symbols
+        run: |
+          make clean
+          make CC=gcc CFLAGS="-Wall -Wextra -std=c99 -g -O2 -Iinclude"
+
+      - name: Run Valgrind on arithmetic test
+        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_arithmetic.vclang
+
+      - name: Run Valgrind on struct test
+        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_structs.vclang
+
+      - name: Run Valgrind on memory allocator test
+        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_memory_new.vclang
+
+      - name: Run Valgrind on functions test
+        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_functions.vclang
+
+  shellcheck:
+    name: Shell Script Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        run: |
+          shellcheck vcc run tests/run_tests.sh

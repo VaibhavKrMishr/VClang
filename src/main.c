@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  struct_def_cleanup_all();
   env_del(e);
+  struct_def_cleanup_all();
   return 0;
 }

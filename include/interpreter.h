@@ -45,13 +45,13 @@ typedef struct StructFieldDef {
     int   offset;
 } StructFieldDef;
 
-typedef struct StructDef {
+struct StructDef {
     char           *name;
     StructFieldDef *fields;
     int             field_count;
     Function      **methods;
     int             method_count;
-} StructDef;
+};
 
 typedef struct StructInstance {
     const StructDef *def;

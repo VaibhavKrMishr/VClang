@@ -10,7 +10,7 @@ PASSED=0
 FAILED=0
 
 for test_file in tests/*.vclang; do
-    if [ "$test_file" == "tests/test_billion_loop.vclang" ]; then
+    if [[ "$test_file" == "tests/test_billion_loop.vclang" ]]; then
         echo -e "[\033[33mSKIP\033[0m] $test_file (1B iterations)"
         continue
     fi
