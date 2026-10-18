@@ -1,4 +1,11 @@
+#if defined(__APPLE__) || defined(__DARWIN__)
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+#endif
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include "../include/interpreter.h"
 #include "../include/parser.h"
 #include "../include/opcodes.h"
@@ -28,7 +35,12 @@ int main(int argc, char **argv) {
 
     printf("\n--- Runtime Statistics ---\n");
     printf("Execution Time: %.2f ms\n", time_spent);
-    printf("Peak Memory: %ld KB\n", usage.ru_maxrss);
+#if defined(__APPLE__)
+    long peak_kb = usage.ru_maxrss / 1024;
+#else
+    long peak_kb = usage.ru_maxrss;
+#endif
+    printf("Peak Memory: %ld KB\n", peak_kb);
     printf("Total Allocated: %zu KB\n", (vclang_total_mem + arena_get_total_allocated()) / 1024);
   } else {
     puts("VClang Version 0.7");
@@ -83,5 +95,6 @@ int main(int argc, char **argv) {
 
   env_del(e);
   struct_def_cleanup_all();
+  env_freelist_cleanup();
   return 0;
 }

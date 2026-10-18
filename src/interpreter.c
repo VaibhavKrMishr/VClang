@@ -47,6 +47,14 @@ void env_del(Env *e) {
   env_freelist = e;
 }
 
+void env_freelist_cleanup(void) {
+  while (env_freelist) {
+    Env *next = env_freelist->parent;
+    free(env_freelist);
+    env_freelist = next;
+  }
+}
+
 // Read-only peek — returns pointer into env storage, no copy (I-4 fix)
 const Value *env_peek(Env *e, const char *name) {
   char first = name[0];

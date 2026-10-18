@@ -97,6 +97,7 @@ struct Env {
 
 Env   *env_new(Env *parent);
 void   env_del(Env *e);
+void   env_freelist_cleanup(void);
 void   env_retain(Env *e);
 void   env_release(Env *e);
 void   env_reset(Env *e);  // Clear contents but don't free struct (for pooling)

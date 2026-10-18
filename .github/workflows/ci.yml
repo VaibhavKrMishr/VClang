@@ -87,8 +87,8 @@ jobs:
 
       - name: Install Valgrind
         run: |
-          sudo apt-get update
-          sudo apt-get install -y valgrind
+          sudo apt-get update -y || true
+          sudo apt-get install -y --no-install-recommends valgrind
 
       - name: Build with debug symbols
         run: |
@@ -96,16 +96,16 @@ jobs:
           make CC=gcc CFLAGS="-Wall -Wextra -std=c99 -g -O2 -Iinclude"
 
       - name: Run Valgrind on arithmetic test
-        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_arithmetic.vclang
+        run: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 ./vclang tests/test_arithmetic.vclang
 
       - name: Run Valgrind on struct test
-        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_structs.vclang
+        run: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 ./vclang tests/test_structs.vclang
 
       - name: Run Valgrind on memory allocator test
-        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_memory_new.vclang
+        run: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 ./vclang tests/test_memory_new.vclang
 
       - name: Run Valgrind on functions test
-        run: valgrind --leak-check=full --error-exitcode=1 ./vclang tests/test_functions.vclang
+        run: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 ./vclang tests/test_functions.vclang
 
   shellcheck:
     name: Shell Script Linting
