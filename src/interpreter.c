@@ -146,7 +146,7 @@ static Value eval_builtin_call(Env *e, const char *fname,
   if (strcmp(fname, "int") == 0) {
     if (argc != 1) return val_new_err("int() takes 1 argument", line);
     Value v = eval(e, args[0]);
-    Value res;
+    Value res = val_new_int(0);
     if (v.type == VAL_INT)
       res = v;
     else if (v.type == VAL_FLOAT)
@@ -168,7 +168,7 @@ static Value eval_builtin_call(Env *e, const char *fname,
   if (strcmp(fname, "float") == 0) {
     if (argc != 1) return val_new_err("float() takes 1 argument", line);
     Value v = eval(e, args[0]);
-    Value res;
+    Value res = val_new_int(0);
     if (v.type == VAL_FLOAT)
       res = v;
     else if (v.type == VAL_INT)
@@ -417,7 +417,8 @@ static Value eval_builtin_call(Env *e, const char *fname,
     }
     size_t len = strlen(c.str);
     if (len > 0) {
-      fwrite(c.str, 1, len, f);
+      size_t written = fwrite(c.str, 1, len, f);
+      (void)written;
     }
     fclose(f);
     val_clear(&p);
@@ -454,7 +455,8 @@ static Value eval_builtin_call(Env *e, const char *fname,
     }
     size_t len = strlen(c.str);
     if (len > 0) {
-      fwrite(c.str, 1, len, f);
+      size_t written = fwrite(c.str, 1, len, f);
+      (void)written;
     }
     fclose(f);
     val_clear(&p);
@@ -716,7 +718,7 @@ static Value eval_binary(Env *e, OpType op,
     strcat(combined, s2);
     // I-11 fix: build Value directly with owned string, avoiding
     // the double-alloc of malloc+strdup inside val_new_str.
-    Value res;
+    Value res = val_new_int(0);
     res.type = VAL_STR;
     res.line = -1;
     res.str  = combined;  // Transfer ownership — no free needed
@@ -738,7 +740,7 @@ static Value eval_binary(Env *e, OpType op,
   val_clear(&v1);
   val_clear(&v2);
 
-  Value res;
+  Value res = val_new_int(0);
   if (is_float) {
     switch (op) {
     case OP_ADD: res = val_new_float(x + y); break;
@@ -1318,8 +1320,8 @@ Value builtin_load(Env *e, const char *filename) {
   long length = ftell(f);
   fseek(f, 0, SEEK_SET);
   char *input = (char *)malloc(length + 1);
-  fread(input, 1, length, f);
-  input[length] = '\0';
+  size_t bytes_read = fread(input, 1, length, f);
+  input[bytes_read] = '\0';
   fclose(f);
 
   Arena *a = arena_new(4096);
